@@ -1,0 +1,110 @@
+# =============================================================================
+# Worker OCR — Separador de PDFs
+# =============================================================================
+# Imagen pesada con PaddleOCR + OpenCV + PyMuPDF para el OCR de contadores.
+#
+# ⚠️ ARM64: la instalación es frágil. Reglas que NO se deben cambiar sin volver
+# a validar (ver docs/OCR.md y la skill `stack-ocr-arm64`):
+#   1. PaddleOCR 2.7.0.3 exige PyMuPDF<1.21 pero no hay wheel útil en aarch64
+#      → se instala con --no-deps y se usa PyMuPDF 1.26.0 (compatible).
+#   2. Nunca compilar desde fuente: solo wheels manylinux2014_aarch64.
+#   3. libgomp.so.1 es obligatorio (sin OpenMP, paddle no importa).
+#   4. numpy 2.x eliminó np.sctypes y rompe imgaug → parche en runtime.
+# =============================================================================
+
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # libgomp debe estar en el path de carga para el motor de paddle.
+    LD_LIBRARY_PATH=/opt/lib
+
+# Dependencias de sistema:
+#   - libgomp1        → OpenMP, requerido por paddlepaddle.
+#   - libglib2.0-0    → OpenCV (aunque sea headless, glib hace falta).
+#   - libgl1          → OpenCV.
+#   - libsm6/libxext6 → OpenCV.
+#   - fonts-dejavu    → render de texto en el reporte.
+#   - unzip/tzdata    → utilidades y zona horaria correcta.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libgomp1 \
+      libglib2.0-0 \
+      libgl1 \
+      libsm6 \
+      libxext6 \
+      libxrender1 \
+      fonts-dejavu-core \
+      unzip \
+      tzdata \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copia explícita de libgomp a la ruta que espera LD_LIBRARY_PATH.
+# Evita depender de que el loader la encuentre por sí solo.
+RUN mkdir -p /opt/lib \
+ && find /usr/lib -name 'libgomp.so.1*' -exec cp -av {} /opt/lib/ \; 2>/dev/null || true \
+ && ldconfig
+
+WORKDIR /app
+
+# --- Dependencias base de la aplicación ------------------------------------
+# El worker OCR también necesita la infraestructura común: redis y rq para
+# consumir la cola, pydantic-settings para la configuración.
+# Sin esto el worker arranca y muere con "No module named 'redis'".
+COPY requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r requirements.txt
+
+# --- Dependencias de OCR ---------------------------------------------------
+# Se instalan en capas separadas para aprovechar la caché: paddle y paddleocr
+# son los pasos lentos y cambian rara vez.
+COPY requirements-ocr.txt .
+
+RUN pip install --upgrade pip setuptools wheel \
+ # 1. PyMuPDF: versión con wheel aarch64 validada. Otra intenta compilar mupdf.
+ && pip install "PyMuPDF==1.26.0" \
+ # 2. paddlepaddle: wheel oficial aarch64.
+ && pip install "paddlepaddle==2.6.2" \
+ # 3. Dependencias de paddleocr que hay que fijar manualmente.
+ && pip install \
+      shapely \
+      pyclipper \
+      lmdb \
+      tqdm \
+      premailer \
+      scikit-image \
+      rapidfuzz \
+      python-docx \
+      beautifulsoup4 \
+      lxml \
+      openpyxl \
+      imgaug \
+ # 4. paddleocr SIN dependencias: su pin de PyMuPDF<1.21 no tiene wheel útil.
+ && pip install --no-deps "paddleocr==2.7.0.3" \
+ # 5. Resto de dependencias del separador.
+ && pip install pandas opencv-python-headless requests
+
+# --- Código de la aplicación ----------------------------------------------
+COPY --chown=1001:1001 app/ ./app/
+
+# --- Motor del separador (horneado, no por volumen) -----------------------
+# Se incluye en la imagen en vez de montarlo: así el worker OCR es
+# autocontenido y no depende de que exista un camino en el host.
+COPY --chown=1001:1001 separador/ /separador/
+
+# --- Usuario sin privilegios ----------------------------------------------
+RUN groupadd --gid 1001 portal \
+ && useradd --uid 1001 --gid portal --create-home --shell /usr/sbin/nologin portal \
+ && mkdir -p /data/uploads /data/outputs \
+ && chown -R portal:portal /data /separador
+
+USER portal
+
+# Directorio de modelos de PaddleOCR (se descargan en la primera ejecución).
+ENV HOME=/home/portal
+
+# El worker-ocr no expone puertos: solo consume de la cola `pesada`.
+CMD ["python", "-m", "app.worker"]

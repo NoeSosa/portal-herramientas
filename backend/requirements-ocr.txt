@@ -1,0 +1,43 @@
+# =============================================================================
+# Dependencias del worker OCR (separador de PDFs) — ARM64
+# =============================================================================
+# ⚠️ Este archivo se usa desde Dockerfile.ocr, que instala en orden específico:
+#    PyMuPDF → paddlepaddle → deps manuales → paddleocr --no-deps.
+#
+# NO añadir aquí `paddleocr` con sus dependencias resueltas: su pin de
+# PyMuPDF<1.21 no tiene wheel aarch64 y rompería el build.
+#
+# Este archivo documenta las versiones validadas; el Dockerfile es la fuente
+# de verdad de la instalación.
+# =============================================================================
+
+# --- Motor de OCR ---
+paddlepaddle==2.6.2
+paddleocr==2.7.0.3
+
+# --- Documento ---
+PyMuPDF==1.26.0
+
+# --- Visión y procesamiento ---
+opencv-python-headless
+numpy
+scikit-image
+imgaug
+shapely
+
+# --- Datos ---
+pandas
+openpyxl
+
+# --- Utilidades de paddleocr (instaladas explícitamente) ---
+pyclipper
+lmdb
+tqdm
+premailer
+rapidfuzz
+python-docx
+beautifulsoup4
+lxml
+
+# --- HTTP (para descargas de modelos y Drive) ---
+requests

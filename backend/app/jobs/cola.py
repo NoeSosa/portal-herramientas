@@ -11,7 +11,7 @@ from app.core.config import obtener_settings
 
 
 @lru_cache(maxsize=1)
-def _conexion() -> Redis:
+def obtener_conexion() -> Redis:
     """Conexión a Redis, reutilizada en todo el proceso."""
     return Redis.from_url(obtener_settings().redis_url)
 
@@ -20,11 +20,11 @@ def cola_rapida() -> Queue:
     """Cola para trabajos de segundos (TTS, visión)."""
     from app.worker import COLA_RAPIDA
 
-    return Queue(COLA_RAPIDA, connection=_conexion())
+    return Queue(COLA_RAPIDA, connection=obtener_conexion())
 
 
 def cola_pesada() -> Queue:
     """Cola para trabajos de minutos (OCR, transcripción)."""
     from app.worker import COLA_PESADA
 
-    return Queue(COLA_PESADA, connection=_conexion())
+    return Queue(COLA_PESADA, connection=obtener_conexion())
