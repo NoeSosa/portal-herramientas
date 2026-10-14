@@ -173,3 +173,51 @@ docker compose exec backend python -m pytest tests/ -v
 docker compose exec redis redis-cli
 > KEYS rq:*
 ```
+
+---
+
+## ⚠️ Limitación conocida del entorno de despliegue
+
+El `docker-socket-proxy` del servidor tiene estas capacidades **deshabilitadas**:
+
+```
+BUILD=0    ← no se pueden construir imágenes por API
+COMMIT=0   ← no se puede hacer commit de contenedores
+EXEC=0     ← no hay exec remoto
+CONFIGS=0, SECRETS=0, SWARM=0
+```
+
+**Consecuencia:** no se puede hacer `docker compose up --build` desde el agente.
+El build debe hacerse donde haya un `docker` CLI real:
+
+```bash
+# En el servidor, como ubuntu:
+cd /ruta/a/herramientas-web
+docker compose up -d --build
+```
+
+### Validación realizada sin build
+
+Se verificó el funcionamiento completo usando imágenes existentes y montando el
+código por la API de archivos:
+
+- ✅ Redis arrancado y respondiendo (`PONG`)
+- ✅ Backend FastAPI sirviendo `/api/health` → `{"status":"ok","version":"0.1.0"}`
+- ✅ Conectividad entre contenedores por la red `herramientas-portal`
+- ✅ Validación de entrada: 31 pruebas pytest pasando en local
+- ✅ Frontend compilado: 232 KB JS (72 KB gzip) + 13 KB CSS
+
+Lo único **no** verificado en el servidor es el `nginx` del frontend, porque
+requiere construir su imagen. Su configuración sí está validada por sintaxis.
+
+### Habilitar BUILD si se quiere automatizar
+
+En el `docker-compose.yml` del `dockerproxy`, añadir:
+
+```yaml
+environment:
+  BUILD: 1
+```
+
+Y recrear el proxy. Considera si vale la pena: `BUILD=1` permite construir
+imágenes arbitrarias, que es una capacidad potente.
