@@ -36,3 +36,5 @@ temp/
 .idea/
 .DS_Store
 Thumbs.db
+tsconfig.tsbuildinfo
+.pytest_cache/
