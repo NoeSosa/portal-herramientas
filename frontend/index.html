@@ -6,6 +6,23 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta name="referrer" content="no-referrer" />
     <title>Portal de Herramientas</title>
+
+    <!--
+      Tipografías de la dirección Industrial/Utilitarian (skill frontend-design):
+        Archivo Black → display
+        Barlow        → cuerpo
+        JetBrains Mono → datos y etiquetas
+
+      `preconnect` adelanta el handshake TLS y `display=swap` muestra el
+      fallback mientras cargan, para que no haya texto invisible.
+      Si no hay red, el CSS define fallbacks del sistema.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

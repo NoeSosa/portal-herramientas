@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { IconoAviso, IconoOk } from "./components/Iconos";
 import { Layout } from "./components/Layout";
 import { TarjetaHerramienta } from "./components/TarjetaHerramienta";
 import { pedir } from "./lib/api";
-import { HERRAMIENTAS } from "./lib/herramientas";
+import { HERRAMIENTAS, buscarHerramienta } from "./lib/herramientas";
 import { PaginaTTS } from "./pages/PaginaTTS";
 
 /** Estado de conexión con el backend. */
@@ -49,25 +50,32 @@ export default function App() {
 
   if (vista === "tts") {
     return (
-      <Layout alVolver={volver}>
+      <Layout alVolver={volver} titulo="Texto a voz">
         <PaginaTTS />
       </Layout>
     );
   }
 
+  const activa = buscarHerramienta(vista);
+
   return (
-    <Layout>
+    <Layout titulo={activa?.nombre}>
       <section aria-labelledby="titulo-portada">
-        <h2 id="titulo-portada" className="text-lg font-semibold tracking-tight">
-          Herramientas disponibles
-        </h2>
-        <p className="mt-1 text-sm text-texto-tenue">
+        <div className="regla">
+          <span className="etiqueta text-tinta">Herramientas</span>
+          <span className="etiqueta ml-auto">
+            {HERRAMIENTAS.filter((h) => h.disponible).length}/
+            {HERRAMIENTAS.length} activas
+          </span>
+        </div>
+
+        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-tinta-tenue">
           Herramientas internas. El acceso es exclusivamente por túnel SSH.
         </p>
 
         <EstadoConexionUI estado={conexion} info={info} />
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {HERRAMIENTAS.map((herramienta) => (
             <TarjetaHerramienta
               key={herramienta.id}
@@ -90,25 +98,28 @@ function EstadoConexionUI({
   info: InfoBackend | null;
 }) {
   if (estado === "cargando") {
-    return (
-      <p className="mt-4 text-xs text-texto-tenue">Comprobando conexión…</p>
-    );
+    return <p className="mt-6 etiqueta">Comprobando conexión…</p>;
   }
 
   if (estado === "error") {
     return (
       <p
         role="alert"
-        className="mt-4 text-xs text-error border border-error/40 bg-error/10 rounded-control px-3 py-2"
+        className="mt-6 inline-flex items-center gap-2 border border-error/50 bg-error/10
+                   px-3 py-2 text-xs text-error"
       >
+        <IconoAviso tam={14} />
         No se pudo contactar al backend. Verifica que el túnel SSH siga activo.
       </p>
     );
   }
 
   return (
-    <p className="mt-4 text-xs text-exito">
-      Conectado · v{info?.version} · {info?.entorno}
+    <p className="mt-6 inline-flex items-center gap-2 text-xs text-ok">
+      <IconoOk tam={14} />
+      <span className="etiqueta text-ok">
+        Conectado · v{info?.version} · {info?.entorno}
+      </span>
     </p>
   );
 }
