@@ -30,10 +30,10 @@ services:
       - sh
       - -c
       - |
-        mkdir -p /data/uploads /data/outputs
-        chown -R 1001:1001 /data
+        mkdir -p /data/uploads /data/outputs /data/tts-runtime
+        chown -R 1000:1000 /data
         chmod -R 750 /data
-        echo "Volumen /data preparado para uid 1001."
+        echo "Volumen /data preparado para uid 1000."
     volumes:
       - datos:/data
     networks:
@@ -95,14 +95,24 @@ services:
       - .env
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # `tts.py` invoca `piper` por nombre y lo busca en el PATH. El binario
+      # vive en el venv de OpenClaw (montado en solo lectura).
+      PATH: /home/node/.openclaw/workspace/venv/bin:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin
     # Sin `ports:` → inalcanzable desde fuera. Solo por la red interna.
     expose:
       - "8000"
     volumes:
       - datos:/data
+      # Workspace de OpenClaw (scripts, venv, modelos en tts_models/).
+      # SOLO LECTURA: el portal nunca debe modificar los scripts del agente.
+      # Se monta en la MISMA ruta que usa el shebang del venv para que
+      # resuelva: /home/node/.openclaw/workspace/venv/bin/python
+      - openclaw-workspace:/home/node/.openclaw:ro
     depends_on:
       redis:
         condition: service_healthy
+      inicializador:
+        condition: service_completed_successfully
     networks:
       - portal
     security_opt:
@@ -135,8 +145,10 @@ services:
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       COLAS: rapida
+      PATH: /home/node/.openclaw/workspace/venv/bin:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin
     volumes:
       - datos:/data
+      - openclaw-workspace:/home/node/.openclaw:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -259,6 +271,12 @@ networks:
     internal: false
 
 volumes:
+  # Workspace de OpenClaw (scripts, venv, modelos). Es un volumen EXTERNO que
+  # ya existe en el host: se declara `external` para que compose no lo cree ni
+  # lo borre, y se monta en solo lectura en los servicios que lo necesitan.
+  openclaw-workspace:
+    external: true
+    name: agente-openclaw-sh6xwb_openclaw_data
   # Datos compartidos entre backend, worker y worker-ocr.
   # Se prepara con el servicio `inicializador` para que el uid 1001 pueda
   # escribir: Docker crea los volúmenes nuevos como root.

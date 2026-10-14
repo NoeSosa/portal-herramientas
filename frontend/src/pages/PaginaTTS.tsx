@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { IconoAviso, IconoDescarga, IconoOk } from "../components/Iconos";
 import { pedir } from "../lib/api";
@@ -7,6 +7,12 @@ interface RespuestaTTS {
   archivo: string;
   nombre_descarga: string;
   caracteres: number;
+}
+
+interface EstadoMotor {
+  disponible: boolean;
+  motivo: string;
+  voces: string[];
 }
 
 type Estado = "inactivo" | "generando" | "listo" | "error";
@@ -27,6 +33,23 @@ export function PaginaTTS() {
   const [estado, setEstado] = useState<Estado>("inactivo");
   const [error, setError] = useState<string | null>(null);
   const [audio, setAudio] = useState<RespuestaTTS | null>(null);
+  const [motor, setMotor] = useState<EstadoMotor | null>(null);
+
+  // Comprueba el motor al entrar: si falta el entorno montado, es mejor
+  // avisar antes de que el usuario escriba un texto y pierda el tiempo.
+  useEffect(() => {
+    let vigente = true;
+    pedir<EstadoMotor>("/tts/estado")
+      .then((d) => {
+        if (vigente) setMotor(d);
+      })
+      .catch(() => {
+        if (vigente) setMotor(null);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, []);
 
   const restantes = MAX_CARACTERES - texto.length;
   const puedeEnviar =
@@ -55,8 +78,26 @@ export function PaginaTTS() {
     <section aria-labelledby="titulo-tts">
       <div className="regla">
         <span className="etiqueta">Síntesis de voz</span>
-        <span className="etiqueta ml-auto">PIPER · LOCAL · SIN CUOTA</span>
+        <span className="etiqueta ml-auto">
+          {motor?.disponible === false
+            ? "MOTOR NO DISPONIBLE"
+            : "PIPER · LOCAL · SIN CUOTA"}
+        </span>
       </div>
+
+      {motor?.disponible === false && (
+        <p
+          role="alert"
+          className="mt-6 flex items-start gap-2 border border-error/50 bg-error/10
+                     px-3 py-2.5 text-xs text-error leading-relaxed"
+        >
+          <IconoAviso tam={14} clase="shrink-0 mt-0.5" />
+          <span>
+            El motor de voz no está disponible en este despliegue.
+            {motor.motivo && <> {motor.motivo}</>}
+          </span>
+        </p>
+      )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]">
         {/* --- Formulario --- */}
@@ -175,12 +216,12 @@ export function PaginaTTS() {
               </p>
 
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <audio controls src={`/api/tts/${audio.archivo}`} className="w-full">
+              <audio controls src={`/api/tts/descargar/${audio.archivo}`} className="w-full">
                 Tu navegador no soporta reproducción de audio.
               </audio>
 
               <a
-                href={`/api/tts/${audio.archivo}`}
+                href={`/api/tts/descargar/${audio.archivo}`}
                 download={audio.nombre_descarga}
                 className="inline-flex items-center gap-2 border border-linea px-3 py-2
                            text-xs uppercase tracking-wider text-tinta-tenue

@@ -88,16 +88,18 @@ RUN pip install --upgrade pip setuptools wheel \
  && pip install pandas opencv-python-headless requests
 
 # --- Código de la aplicación ----------------------------------------------
-COPY --chown=1001:1001 app/ ./app/
+COPY --chown=1000:1000 app/ ./app/
 
 # --- Motor del separador (horneado, no por volumen) -----------------------
 # Se incluye en la imagen en vez de montarlo: así el worker OCR es
 # autocontenido y no depende de que exista un camino en el host.
-COPY --chown=1001:1001 separador/ /separador/
+COPY --chown=1000:1000 separador/ /separador/
 
 # --- Usuario sin privilegios ----------------------------------------------
-RUN groupadd --gid 1001 portal \
- && useradd --uid 1001 --gid portal --create-home --shell /usr/sbin/nologin portal \
+# uid/gid 1000: es el dueño del volumen de OpenClaw (drwx------ de 1000).
+# Con otro uid el contenedor no puede leer /home/node/.openclaw.
+RUN groupadd --gid 1000 portal \
+ && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin portal \
  && mkdir -p /data/uploads /data/outputs \
  && chown -R portal:portal /data /separador
 

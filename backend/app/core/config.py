@@ -46,7 +46,19 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3-flash-preview"
 
-    herramientas_scripts_dir: Path = Path("/scripts")
+    herramientas_scripts_dir: Path = Path("/home/node/.openclaw/workspace/scripts")
+    """Carpeta con los scripts de Python (tts.py, transcribir_av.py…).
+
+    Se monta desde el volumen de OpenClaw en SOLO LECTURA: el portal nunca
+    debe poder modificar los scripts del agente.
+    """
+
+    herramientas_venv_bin: Path = Path("/home/node/.openclaw/workspace/venv/bin")
+    """Binarios del venv de OpenClaw (piper, python con sus dependencias)."""
+
+    herramientas_modelos_dir: Path = Path("/home/node/.openclaw/workspace/tts_models")
+    """Modelos de voz de Piper (es_MX-ald-medium.onnx y compañía)."""
+
     ocr_ld_library_path: str | None = None
 
     # --- Correo (desactivado por defecto) -----------------------------------
