@@ -1,0 +1,186 @@
+# =============================================================================
+# Portal de Herramientas — Podman/Docker Compose
+# =============================================================================
+# ⚠️ DISEÑO DE SEGURIDAD:
+#   - Ningún servicio lleva labels de Traefik → NADA se publica a internet.
+#   - Solo `frontend` publica un puerto, y es 127.0.0.1 (loopback del host).
+#   - Acceso exclusivo por túnel SSH:
+#       ssh -L 8080:127.0.0.1:8080 -i llave.key ubuntu@<servidor>
+#
+#   Si algún día quieres exponerlo por Dokploy/Traefik, añade labels como en
+#   los otros proyectos, pero NO antes de poner autenticación.
+# =============================================================================
+
+name: herramientas-web
+
+services:
+  # --- Frontend: React compilado, servido por nginx ------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: herramientas-web-frontend:local
+    container_name: herramientas-frontend
+    restart: unless-stopped
+    ports:
+      # SOLO loopback. El acceso es vía túnel SSH.
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - portal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Backend: FastAPI, API HTTP ------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: herramientas-web-backend:local
+    container_name: herramientas-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sin esto, los jobs no encontrarían Redis.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    # Sin `ports:` → inalcanzable desde fuera. Solo por la red interna.
+    expose:
+      - "8000"
+    volumes:
+      - ./data:/data
+      # Scripts existentes de OpenClaw, montados SOLO lectura.
+      # Descomenta y ajusta la ruta real cuando integres tus herramientas.
+      # - /home/node/.openclaw/workspace/scripts:/scripts:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - portal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Worker: procesa los jobs pesados (OCR, transcripción) ---------------
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: herramientas-web-backend:local
+    container_name: herramientas-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - ./data:/data
+      # - /home/node/.openclaw/workspace/scripts:/scripts:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - portal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # El separador de PDFs es intensivo: límites para no tumbar el servidor.
+    # El host tiene 4 vCPU / 23 GB y ya corre 13 contenedores.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- Redis: cola de trabajos y caché -------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: herramientas-redis
+    restart: unless-stopped
+    # Sin `ports:` → solo red interna.
+    command:
+      - redis-server
+      - --save
+      - "60 1"
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - "256mb"
+      - --maxmemory-policy
+      - "allkeys-lru"
+    volumes:
+      - redis-data:/data
+    networks:
+      - portal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  portal:
+    driver: bridge
+    # Red propia: aislada de dokploy-network y de la red del proxy.
+    internal: false
+
+volumes:
+  redis-data:
