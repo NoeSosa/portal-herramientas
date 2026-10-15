@@ -232,4 +232,5 @@ compose sigue siendo la fuente de verdad; los `docker run` deben replicarlo.
 | El worker OCR **no** lleva el venv en el PATH | Ejecuta su propio código con el python del sistema; con el venv delante cargaría su stdlib y fallaría con `No module named '_csv'` |
 | El worker OCR sí monta el workspace (solo lectura) | La cola pesada también transcribe, y eso necesita los scripts y el intérprete del venv |
 | Un solo id por trabajo | Se pasa `job_id=` a RQ para que el id del POST, la carpeta de salida y la descarga sean el mismo |
+| Alias DNS de red | Compose los crea por nombre de servicio (`backend`, `redis`). Con `docker run` hay que añadirlos con `--alias`, o nginx responde 502 |
 

@@ -90,6 +90,19 @@ recrear() {
   fi
 }
 
+# ⚠️ `docker compose` crea alias DNS por NOMBRE DE SERVICIO (`backend`, `redis`,
+# `worker-ocr`). Con `docker run` el contenedor solo responde a su `--name`
+# (`hw-backend`), y nginx falla con 502 "backend could not be resolved".
+# Aquí se recrean esos alias a mano.
+conectar_red() {
+  local contenedor="$1"; shift
+  local alias_args=()
+  for alias in "$@"; do alias_args+=(--alias "$alias"); done
+
+  docker network disconnect "$RED" "$contenedor" >/dev/null 2>&1 || true
+  docker network connect "${alias_args[@]}" "$RED" "$contenedor"
+}
+
 log "Recreando backend"
 recrear hw-backend
 docker run -d --name hw-backend --restart unless-stopped --network "$RED" \
@@ -100,6 +113,9 @@ docker run -d --name hw-backend --restart unless-stopped --network "$RED" \
   -v "${VOL_OPENCLAW}:${OPENCLAW_MONTADO}:ro" \
   --security-opt no-new-privileges:true --cap-drop ALL \
   herramientas-web-backend:local >/dev/null
+
+# Alias DNS que espera nginx y el resto del stack (ver `conectar_red`).
+conectar_red hw-backend backend
 
 log "Recreando worker ligero (TTS, visión, canción)"
 recrear hw-worker
@@ -113,6 +129,8 @@ docker run -d --name hw-worker --restart unless-stopped --network "$RED" \
   --cpus 1.0 --memory 1g \
   herramientas-web-backend:local python -m app.worker >/dev/null
 
+conectar_red hw-worker worker
+
 if [[ $SOLO_BACKEND -eq 0 && $SIN_OCR -eq 0 ]]; then
   log "Recreando worker OCR (separador + transcripción)"
   recrear hw-worker-ocr
@@ -125,6 +143,8 @@ if [[ $SOLO_BACKEND -eq 0 && $SIN_OCR -eq 0 ]]; then
     --security-opt no-new-privileges:true --cap-drop ALL \
     --cpus 2.0 --memory 4g \
     herramientas-web-ocr:local python3 -m app.worker >/dev/null
+
+  conectar_red hw-worker-ocr worker-ocr
 fi
 
 log "Recreando frontend (nginx)"
@@ -152,6 +172,14 @@ urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)
     exit 1
   fi
 done
+
+log "Comprobando el portal a través de nginx"
+if docker exec hw-frontend wget -qO- http://127.0.0.1/api/health >/dev/null 2>&1; then
+  echo "    nginx → backend OK"
+else
+  error "nginx no alcanza al backend (/api/health falla). Revisa los alias de red."
+  exit 1
+fi
 
 log "Estado final"
 docker ps --filter "name=hw-" --format 'table {{.Names}}\t{{.Status}}'
