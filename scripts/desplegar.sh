@@ -105,12 +105,15 @@ conectar_red() {
 
 log "Recreando backend"
 recrear hw-backend
+# ⚠️ El backend es el ÚNICO con el workspace en ESCRITURA: el panel de finanzas
+# edita el ledger real (el agente debe ver los cambios al instante). Los demás
+# servicios lo montan en `:ro` porque no necesitan escribir.
 docker run -d --name hw-backend --restart unless-stopped --network "$RED" \
   --env-file .env \
   -e REDIS_URL=redis://redis:6379/0 \
   -e PATH="$PATH_CON_VENV" \
   -v "${VOL_DATOS}:/data" \
-  -v "${VOL_OPENCLAW}:${OPENCLAW_MONTADO}:ro" \
+  -v "${VOL_OPENCLAW}:${OPENCLAW_MONTADO}:rw" \
   --security-opt no-new-privileges:true --cap-drop ALL \
   herramientas-web-backend:local >/dev/null
 

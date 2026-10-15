@@ -65,7 +65,7 @@ def crear_aplicacion() -> FastAPI:
         CORSMiddleware,
         allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["Content-Type"],
     )
 

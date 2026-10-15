@@ -233,4 +233,5 @@ compose sigue siendo la fuente de verdad; los `docker run` deben replicarlo.
 | El worker OCR sí monta el workspace (solo lectura) | La cola pesada también transcribe, y eso necesita los scripts y el intérprete del venv |
 | Un solo id por trabajo | Se pasa `job_id=` a RQ para que el id del POST, la carpeta de salida y la descarga sean el mismo |
 | Alias DNS de red | Compose los crea por nombre de servicio (`backend`, `redis`). Con `docker run` hay que añadirlos con `--alias`, o nginx responde 502 |
+| El **backend** monta el workspace en `rw`; el resto en `ro` | El panel de finanzas edita el ledger real: si escribiera una copia, el agente seguiría viendo los datos viejos. Un submount `:rw` dentro de un padre `:ro` **no** funciona: Docker reemplaza el directorio por la raíz del volumen y el ledger desaparece |
 

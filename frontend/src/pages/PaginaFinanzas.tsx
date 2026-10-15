@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { SeccionMovimientos } from "../components/SeccionMovimientos";
 import { IconoAviso, IconoFinanzas, IconoOk } from "../components/Iconos";
 import { pedir } from "../lib/api";
 
@@ -37,6 +38,7 @@ interface EstadoMotor {
   motivo: string;
   usuario: string;
   periodos: string[];
+  tipos_cuenta: string[];
 }
 
 type Estado = "cargando" | "listo" | "error";
@@ -77,6 +79,12 @@ export function PaginaFinanzas() {
   const [datos, setDatos] = useState<RespuestaPanel | null>(null);
   const [motor, setMotor] = useState<EstadoMotor | null>(null);
 
+  // Edición de saldos: una cuenta a la vez.
+  const [cuentaEditando, setCuentaEditando] = useState<string | null>(null);
+  const [saldoBorrador, setSaldoBorrador] = useState<number | null>(null);
+  const [guardandoSaldo, setGuardandoSaldo] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
   useEffect(() => {
     let vigente = true;
     pedir<EstadoMotor>("/finanzas/estado")
@@ -109,6 +117,41 @@ export function PaginaFinanzas() {
     void cargar();
   }, [cargar]);
 
+  // El aviso de guardado es efímero: no debe quedarse pegado mientras se trabaja.
+  useEffect(() => {
+    if (!aviso) return;
+    const t = window.setTimeout(() => setAviso(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [aviso]);
+
+  /** Guarda el saldo de una cuenta. Corrige el dato, no registra un movimiento. */
+  const guardarSaldo = useCallback(
+    async (cuenta: string, saldo: number, tipo: string) => {
+      setGuardandoSaldo(true);
+      setError(null);
+
+      try {
+        const resultado = await pedir<{ ok: boolean; mensaje: string }>(
+          "/finanzas/cuentas",
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cuenta, saldo, tipo }),
+          },
+        );
+        setAviso(resultado.mensaje);
+        setCuentaEditando(null);
+        setSaldoBorrador(null);
+        await cargar();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo guardar el saldo.");
+      } finally {
+        setGuardandoSaldo(false);
+      }
+    },
+    [cargar],
+  );
+
   const resumen = datos?.resumen;
   const cuentas = datos?.cuentas?.cuentas ?? {};
   const tarjetas = datos?.tarjetas ?? {};
@@ -121,7 +164,7 @@ export function PaginaFinanzas() {
       <div className="regla">
         <span className="etiqueta">Finanzas</span>
         <span className="etiqueta ml-auto">
-          SOLO LECTURA · {motor?.usuario?.toUpperCase() ?? "NOE"}
+          LEDGER · {motor?.usuario?.toUpperCase() ?? "NOE"}
         </span>
       </div>
 
@@ -167,6 +210,13 @@ export function PaginaFinanzas() {
 
       {estado === "cargando" && (
         <p className="mt-8 text-xs text-tinta-apagada">Leyendo el ledger…</p>
+      )}
+
+      {aviso && (
+        <p className="mt-4 flex items-center gap-2 border border-ok/40 bg-ok/10 px-3 py-2 text-xs text-ok">
+          <IconoOk tam={14} />
+          {aviso}
+        </p>
       )}
 
       {estado === "error" && error && (
@@ -272,23 +322,75 @@ export function PaginaFinanzas() {
                 <p className="mt-4 text-xs text-tinta-apagada">Sin cuentas cargadas.</p>
               ) : (
                 <ul className="mt-4 divide-y divide-linea">
-                  {Object.entries(cuentas).map(([nombre, cuenta]) => (
-                    <li key={nombre} className="flex items-baseline justify-between gap-3 py-2">
-                      <span className="text-xs text-tinta capitalize">
-                        {nombre.replace(/_/g, " ")}
-                      </span>
-                      <span className="flex items-baseline gap-3">
-                        <span className="etiqueta">{cuenta.tipo}</span>
-                        <span
-                          className={`font-mono text-xs ${
-                            cuenta.saldo < 0 ? "text-error" : "text-tinta"
-                          }`}
-                        >
-                          {dinero(cuenta.saldo)}
+                  {Object.entries(cuentas).map(([nombre, cuenta]) => {
+                    const esEdicion = cuentaEditando === nombre;
+
+                    return (
+                      <li
+                        key={nombre}
+                        className="flex items-center justify-between gap-3 py-2"
+                      >
+                        <span className="text-xs text-tinta capitalize">
+                          {nombre.replace(/_/g, " ")}
                         </span>
-                      </span>
-                    </li>
-                  ))}
+
+                        {esEdicion ? (
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              step="0.01"
+                              autoFocus
+                              value={saldoBorrador ?? ""}
+                              onChange={(e) =>
+                                setSaldoBorrador(
+                                  e.target.value ? Number(e.target.value) : null,
+                                )
+                              }
+                              className="w-28 rounded-control border border-linea bg-fondo px-2 py-1
+                                         text-right font-mono text-xs text-tinta focus:border-acento"
+                            />
+                            <button
+                              type="button"
+                              disabled={guardandoSaldo || saldoBorrador === null}
+                              onClick={() =>
+                                void guardarSaldo(nombre, saldoBorrador ?? 0, cuenta.tipo)
+                              }
+                              className="text-ok hover:underline disabled:opacity-30"
+                            >
+                              {guardandoSaldo ? "…" : "Guardar"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCuentaEditando(null);
+                                setSaldoBorrador(null);
+                              }}
+                              className="text-tinta-apagada hover:text-tinta"
+                            >
+                              Cancelar
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="flex items-baseline gap-3">
+                            <span className="etiqueta">{cuenta.tipo}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCuentaEditando(nombre);
+                                setSaldoBorrador(cuenta.saldo);
+                              }}
+                              title="Corregir el saldo"
+                              className={`font-mono text-xs hover:underline ${
+                                cuenta.saldo < 0 ? "text-error" : "text-tinta"
+                              }`}
+                            >
+                              {dinero(cuenta.saldo)}
+                            </button>
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -371,9 +473,13 @@ export function PaginaFinanzas() {
         <IconoOk tam={14} clase="text-ok" />
         <span className="etiqueta">
           <IconoFinanzas tam={12} clase="mr-1 inline" />
-          Registrar movimientos se hace desde «Comprobante a finanzas».
+          El portal mantiene el registro. Las transferencias y los pagos siguen
+          siendo conversación con el agente.
         </span>
       </p>
+
+      {/* --- Movimientos: el editor del ledger --- */}
+      <SeccionMovimientos />
     </section>
   );
 }

@@ -107,7 +107,18 @@ services:
       # SOLO LECTURA: el portal nunca debe modificar los scripts del agente.
       # Se monta en la MISMA ruta que usa el shebang del venv para que
       # resuelva: /home/node/.openclaw/workspace/venv/bin/python
-      - openclaw-workspace:/home/node/.openclaw:ro
+      # ⚠️ El backend es el ÚNICO servicio con el workspace en ESCRITURA.
+      # Motivo: el panel de finanzas permite editar el ledger, y editar una
+      # copia no serviría de nada (el agente seguiría viendo los datos viejos).
+      # OpenClaw mantiene este volumen con escritura normal, así que el script
+      # `finanzas.py` escribe el original directamente y no hace falta copiar.
+      #
+      # Nota: montar un subdirectorio en `:rw` sobre un padre `:ro` NO funciona
+      # (Docker reemplaza el directorio por la raíz del volumen y el ledger
+      # desaparece). Por eso la escritura es del montaje completo.
+      #
+      # El resto de servicios sí lo monta en `:ro`: no necesitan escribir.
+      - openclaw-workspace:/home/node/.openclaw:rw
     depends_on:
       redis:
         condition: service_healthy
