@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -77,7 +78,11 @@ def ejecutar_separador(
     carpeta_resultados = salida / "resultados"
 
     comando = [
-        "python",
+        # `python3`, no `python`: la imagen del worker OCR usa python3 del sistema
+        # (debian + apt) porque la cola pesada comparte el venv de OpenClaw, que
+        # espera `/usr/bin/python3`. En `python:*` existía el alias `python`; con
+        # debian no, y el subprocess moría con FileNotFoundError.
+        sys.executable or "python3",
         str(MOTOR),
         "--pdf",
         str(pdf),

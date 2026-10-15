@@ -183,7 +183,9 @@ services:
     image: herramientas-web-ocr:local
     container_name: hw-worker-ocr
     restart: unless-stopped
-    command: ["python", "-m", "app.worker"]
+    # `python3`, no `python`: la imagen base es debian + apt python3 (para que el
+    # venv de OpenClaw resuelva), donde no existe el alias `python`.
+    command: ["python3", "-m", "app.worker"]
     env_file:
       - .env
     environment:
@@ -191,8 +193,18 @@ services:
       COLAS: pesada
       # PaddleOCR ARM64 necesita libgomp para el motor de inferencia.
       LD_LIBRARY_PATH: /opt/lib
+      # ⚠️ PATH SIN el venv de OpenClaw, a diferencia del worker ligero.
+      # El worker OCR ejecuta SU PROPIO código con el python del sistema; si el
+      # venv va primero en el PATH, `python3` resuelve al venv montado y carga su
+      # stdlib incompleta → `ModuleNotFoundError: No module named '_csv'`.
+      # Los scripts del workspace se invocan por ruta ABSOLUTA (ver puente.py),
+      # así que no necesitan estar en el PATH.
+      PATH: /opt/venv/bin:/usr/local/bin:/usr/bin:/bin
     volumes:
       - datos:/data
+      # Necesario porque la cola pesada también transcribe: los scripts
+      # (transcribir_av.py) y el intérprete viven aquí. Solo lectura.
+      - openclaw-workspace:/home/node/.openclaw:ro
     depends_on:
       redis:
         condition: service_healthy

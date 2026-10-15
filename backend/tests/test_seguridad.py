@@ -22,6 +22,15 @@ JPEG = b"\xff\xd8\xff\xe0" + b"x" * 100
 MP3 = b"ID3\x03\x00" + b"x" * 100
 TEXTO_PLANO = b"esto no es un archivo binario valido"
 
+# Contenedores RIFF: mismos 4 primeros bytes, contenido distinto.
+# Se distinguen por los bytes 8-12 (WAVE vs WEBP).
+WAV = b"RIFF\x24\x08\x00\x00WAVEfmt " + b"x" * 100
+WEBP = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"x" * 100
+
+# Cajas ISO-BMFF: MP4 y MOV comparten prefijo; MOV declara "qt  ".
+MP4 = b"\x00\x00\x00\x20ftypisom" + b"x" * 100
+MOV = b"\x00\x00\x00\x14ftypqt  " + b"x" * 100
+
 
 class TestDetectarTipo:
     """La detección debe basarse en contenido, nunca en la extensión."""
@@ -130,3 +139,43 @@ class TestValidarCantidadPdf:
     def test_rechaza_por_encima_del_limite(self) -> None:
         with pytest.raises(ArchivoInvalidoError, match="máximo"):
             validar_cantidad_pdf(501, max_paginas=500)
+
+
+class TestFormatosAmbiguos:
+    """Regresión: formatos que comparten magic bytes deben distinguirse.
+
+    `RIFF` lo usan WAV y WEBP; sin mirar los bytes 8-12, un archivo de audio
+    subido a una herramienta de audio se rechazaba como "image/webp".
+    """
+
+    def test_wav_se_detecta_como_audio(self) -> None:
+        assert detectar_tipo(WAV) == "audio/wav"
+
+    def test_webp_se_detecta_como_imagen(self) -> None:
+        assert detectar_tipo(WEBP) == "image/webp"
+
+    def test_wav_pasa_validacion_de_herramienta_de_audio(self) -> None:
+        resultado = validar_archivo(
+            "grabacion.wav",
+            WAV,
+            tipos_permitidos={"audio/wav", "audio/mpeg"},
+            max_bytes=1024,
+        )
+        assert resultado.tipo_detectado == "audio/wav"
+
+    def test_webp_no_pasa_validacion_de_audio(self) -> None:
+        with pytest.raises(ArchivoInvalidoError, match="no permitido"):
+            validar_archivo(
+                "imagen.webp",
+                WEBP,
+                tipos_permitidos={"audio/wav", "audio/mpeg"},
+                max_bytes=1024,
+            )
+
+    def test_mp4_y_mov_se_distinguen(self) -> None:
+        assert detectar_tipo(MP4) == "video/mp4"
+        assert detectar_tipo(MOV) == "video/quicktime"
+
+    def test_riff_desconocido_no_se_acepta(self) -> None:
+        """Un RIFF que no es WAVE ni WEBP no debe pasar como ninguno de los dos."""
+        assert detectar_tipo(b"RIFF\x00\x00\x00\x00AVI ") is None

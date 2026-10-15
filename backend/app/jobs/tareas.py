@@ -19,8 +19,13 @@ from app.core.config import obtener_settings
 logger = logging.getLogger(__name__)
 
 
-def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
-    """Ejecuta el separador de PDFs y deja el resultado en outputs/<job_id>.
+def procesar_separador(ruta_pdf: str, id_trabajo: str) -> dict[str, object]:
+    """Ejecuta el separador de PDFs y deja el resultado en outputs/<id_trabajo>.
+
+    Nota sobre el nombre: **no** puede llamarse `job_id`. RQ inyecta argumentos
+    propios en la ejecución (`job_id`, `failure_ttl`…) y el paso de kwargs
+    choca: `TypeError: missing 1 required positional argument`. Se usa
+    `id_trabajo` para no colisionar.
 
     Esta función corre en el contenedor `hw-worker-ocr`, que es el único con
     PaddleOCR instalado. Por eso el import de `app.services.separador` es
@@ -29,10 +34,10 @@ def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
     settings = obtener_settings()
     settings.preparar_directorios()
 
-    directorio_trabajo = settings.output_dir / job_id
+    directorio_trabajo = settings.output_dir / id_trabajo
     directorio_trabajo.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Job %s: separando %s", job_id, Path(ruta_pdf).name)
+    logger.info("Job %s: separando %s", id_trabajo, Path(ruta_pdf).name)
 
     from app.services.separador import ErrorSeparador, ejecutar_separador, limpiar_entrada
 
@@ -45,7 +50,7 @@ def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
             str(directorio_trabajo),
         )
     except ErrorSeparador as exc:
-        logger.error("Job %s falló: %s", job_id, exc)
+        logger.error("Job %s falló: %s", id_trabajo, exc)
         return {"ok": False, "error": str(exc)}
     finally:
         # El PDF de entrada puede contener datos de clientes: se borra siempre,
@@ -54,7 +59,7 @@ def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
 
     logger.info(
         "Job %s completado: %s OK, %s a verificar",
-        job_id,
+        id_trabajo,
         resultado.get("ok"),
         resultado.get("verificar"),
     )
@@ -63,11 +68,11 @@ def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
 
 def procesar_transcripcion(
     ruta_entrada: str,
-    job_id: str,
+    id_trabajo: str,
     idioma: str | None = None,
     motor: str = "auto",
 ) -> dict[str, object]:
-    """Transcribe un audio o video y deja el texto en outputs/<job_id>.
+    """Transcribe un audio o video y deja el texto en outputs/<id_trabajo>.
 
     Corre en la cola pesada junto al separador: la transcripción tarda minutos
     y necesita los mismos límites de CPU y memoria.
@@ -79,12 +84,12 @@ def procesar_transcripcion(
     settings = obtener_settings()
     settings.preparar_directorios()
 
-    directorio = settings.output_dir / job_id
+    directorio = settings.output_dir / id_trabajo
     directorio.mkdir(parents=True, exist_ok=True)
 
     logger.info(
         "Job %s: transcribiendo %s (idioma=%s motor=%s)",
-        job_id,
+        id_trabajo,
         Path(ruta_entrada).name,
         idioma or "auto",
         motor,
@@ -104,7 +109,7 @@ def procesar_transcripcion(
             settings=settings,
         )
     except ErrorTranscripcion as exc:
-        logger.error("Job %s falló: %s", job_id, exc)
+        logger.error("Job %s falló: %s", id_trabajo, exc)
         return {"ok": False, "error": str(exc)[:400]}
     finally:
         # El audio puede contener conversaciones privadas: se borra siempre.
@@ -112,6 +117,6 @@ def procesar_transcripcion(
 
     (directorio / "transcripcion.txt").write_text(texto + "\n", encoding="utf-8")
 
-    logger.info("Job %s completado: %d caracteres", job_id, len(texto))
+    logger.info("Job %s completado: %d caracteres", id_trabajo, len(texto))
 
     return {"ok": True, "texto": texto, "caracteres": len(texto)}

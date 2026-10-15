@@ -127,7 +127,7 @@ class TestTareaSeparador:
         from app.jobs.tareas import procesar_separador
 
         parametros = list(inspect.signature(procesar_separador).parameters)
-        assert parametros == ["ruta_pdf", "job_id"]
+        assert parametros == ["ruta_pdf", "id_trabajo"]
 
 
 class TestCompatOcrArm64:

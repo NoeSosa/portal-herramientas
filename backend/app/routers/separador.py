@@ -65,20 +65,24 @@ async def subir_pdf(archivo: UploadFile = File(...)) -> RespuestaEncolado:
     except ArchivoInvalidoError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # El id se genera aquí y se usa también como job id de RQ: una sola
-    # fuente de verdad, y permite nombrar el PDF con él antes de encolar.
-    job_id = uuid.uuid4().hex[:12]
+    # Un solo identificador para todo: el que devuelve el POST, la carpeta de
+    # salida del worker y la descarga. Se usa el mismo id que asigna RQ
+    # (`job_id=`), en vez de generar uno propio aparte.
+    nombre_entrada = uuid.uuid4().hex[:12]
 
-    ruta_entrada = settings.upload_dir / f"separador-{job_id}.pdf"
+    ruta_entrada = settings.upload_dir / f"separador-{nombre_entrada}.pdf"
     ruta_entrada.write_bytes(validado.contenido)
 
-    cola_pesada().enqueue(
+    job = cola_pesada().enqueue(
         procesar_separador,
         str(ruta_entrada),
-        job_id=job_id,
+        id_trabajo=nombre_entrada,
+        job_id=nombre_entrada,
         job_timeout=settings.job_timeout_seconds,
         result_ttl=86400,  # el resultado se conserva 24 h
     )
+
+    job_id = job.id
 
     logger.info("Separador encolado: job=%s archivo=%s", job_id, validado.nombre)
 

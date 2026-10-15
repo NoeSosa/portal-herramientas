@@ -12,7 +12,18 @@
 #   4. numpy 2.x eliminó np.sctypes y rompe imgaug → parche en runtime.
 # =============================================================================
 
-FROM python:3.11-slim-bookworm
+FROM debian:bookworm-slim
+
+# ⚠️ BASE = debian + python3 del sistema (NO `python:3.11-slim`).
+# Motivo: el worker OCR comparte la cola pesada con la transcripción, y esta
+# última ejecuta scripts del workspace de OpenClaw con SU venv. Los venv llevan
+# rutas horneadas (`home = /usr/bin`, `executable = /usr/bin/python3.11`), y las
+# imágenes `python:*` instalan en /usr/local/bin con su propio stdlib: el venv
+# montado acabaría cargando media stdlib de la imagen y fallando con
+# `ModuleNotFoundError: No module named '_csv'` / `'_posixsubprocess'`.
+# Con debian + `apt install python3`, /usr/lib/python3.11 está completo y el
+# venv de OpenClaw funciona tal cual. Igual que el Dockerfile del backend.
+ENV DEBIAN_FRONTEND=noninteractive
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -30,6 +41,9 @@ ENV PYTHONUNBUFFERED=1 \
 #   - unzip/tzdata    → utilidades y zona horaria correcta.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+      python3 \
+      python3-venv \
+      python3-pip \
       libgomp1 \
       libglib2.0-0 \
       libgl1 \
@@ -47,6 +61,11 @@ RUN mkdir -p /opt/lib \
  && find /usr/lib -name 'libgomp.so.1*' -exec cp -av {} /opt/lib/ \; 2>/dev/null || true \
  && ldconfig
 
+# El intérprete del sistema queda en /usr/bin/python3, que es exactamente lo que
+# espera el venv de OpenClaw (`pyvenv.cfg` → `home = /usr/bin`). No hace falta
+# ningún enlace de compatibilidad.
+RUN /usr/bin/python3 -V
+
 WORKDIR /app
 
 # --- Dependencias base de la aplicación ------------------------------------
@@ -55,21 +74,21 @@ WORKDIR /app
 # Sin esto el worker arranca y muere con "No module named 'redis'".
 COPY requirements.txt .
 
-RUN pip install --upgrade pip setuptools wheel \
- && pip install -r requirements.txt
+RUN python3 -m pip install --break-system-packages --upgrade pip setuptools wheel \
+ && python3 -m pip install --break-system-packages -r requirements.txt
 
 # --- Dependencias de OCR ---------------------------------------------------
 # Se instalan en capas separadas para aprovechar la caché: paddle y paddleocr
 # son los pasos lentos y cambian rara vez.
 COPY requirements-ocr.txt .
 
-RUN pip install --upgrade pip setuptools wheel \
+RUN python3 -m pip install --break-system-packages --upgrade pip setuptools wheel \
  # 1. PyMuPDF: versión con wheel aarch64 validada. Otra intenta compilar mupdf.
- && pip install "PyMuPDF==1.26.0" \
+ && python3 -m pip install --break-system-packages "PyMuPDF==1.26.0" \
  # 2. paddlepaddle: wheel oficial aarch64.
- && pip install "paddlepaddle==2.6.2" \
+ && python3 -m pip install --break-system-packages "paddlepaddle==2.6.2" \
  # 3. Dependencias de paddleocr que hay que fijar manualmente.
- && pip install \
+ && python3 -m pip install --break-system-packages \
       shapely \
       pyclipper \
       lmdb \
@@ -83,9 +102,9 @@ RUN pip install --upgrade pip setuptools wheel \
       openpyxl \
       imgaug \
  # 4. paddleocr SIN dependencias: su pin de PyMuPDF<1.21 no tiene wheel útil.
- && pip install --no-deps "paddleocr==2.7.0.3" \
+ && python3 -m pip install --break-system-packages --no-deps "paddleocr==2.7.0.3" \
  # 5. Resto de dependencias del separador.
- && pip install pandas opencv-python-headless requests
+ && python3 -m pip install --break-system-packages pandas opencv-python-headless requests
 
 # --- Código de la aplicación ----------------------------------------------
 COPY --chown=1000:1000 app/ ./app/

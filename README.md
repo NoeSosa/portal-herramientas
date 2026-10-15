@@ -174,6 +174,15 @@ herramientas-web/
 | Separador por sede | ✅ Implementada |
 | Panel de finanzas | ✅ Implementada |
 
+## Script de despliegue
+
+`scripts/desplegar.sh` reconstruye y recrea el stack replicando el compose.
+Se ejecuta desde el contenedor de OpenClaw:
+
+```bash
+bash /home/node/.openclaw/workspace/herramientas-web/scripts/desplegar.sh
+```
+
 ## Comandos útiles
 
 ```bash
@@ -193,80 +202,34 @@ docker compose exec redis redis-cli
 
 ---
 
-## ⚠️ Limitación conocida del entorno de despliegue
+## Despliegue desde el agente
 
-El `docker-socket-proxy` del servidor tiene estas capacidades **deshabilitadas**:
-
-```
-BUILD=0    ← no se pueden construir imágenes por API
-COMMIT=0   ← no se puede hacer commit de contenedores
-EXEC=0     ← no hay exec remoto
-CONFIGS=0, SECRETS=0, SWARM=0
-```
-
-**Consecuencia:** no se puede hacer `docker compose up --build` desde el agente.
-El build debe hacerse donde haya un `docker` CLI real:
+El `docker-socket-proxy` tiene **BUILD habilitado**, así que el stack se puede
+construir y recrear desde aquí sin entrar al servidor:
 
 ```bash
-# En el servidor, como ubuntu:
-cd /ruta/a/herramientas-web
-docker compose up -d --build
+export DOCKER_HOST=tcp://dockerproxy:2375
+cd herramientas-web
+
+# 1. Construir las tres imágenes
+docker build -t herramientas-web-backend:local ./backend
+docker build -t herramientas-web-frontend:local ./frontend
+docker build -t herramientas-web-ocr:local -f backend/Dockerfile.ocr ./backend
+
+# 2. Recrear los contenedores (ver el script sección «Comandos útiles»)
 ```
 
-### Cómo el portal accede a los scripts de OpenClaw
+`docker compose` **no está disponible** en el CLI del contenedor: hay que usar
+`docker build` / `docker run` con los mismos parámetros que el compose. El
+compose sigue siendo la fuente de verdad; los `docker run` deben replicarlo.
 
-El compose corre en el **host**, pero los scripts viven en el **contenedor
-`openclaw-whatsapp`**. Se resuelve montando su volumen como solo lectura:
-
-```yaml
-volumes:
-  - openclaw-workspace:/home/node/.openclaw:ro   # :ro = solo lectura
-volumes:
-  openclaw-workspace:
-    external: true
-    name: agente-openclaw-sh6xwb_openclaw_data
-```
-
-**Tres detalles que no son obvios** y sin ellos no funciona:
+### Detalles del entorno que no son obvios
 
 | Detalle | Por qué |
 |---|---|
-| La ruta es `/home/node/.openclaw` | Los venv de Python llevan rutas absolutas horneadas. El shebang de `piper` apunta a `/home/node/.openclaw/workspace/venv/bin/python`. Si se monta en otra ruta, no resuelve |
-| Base `debian:bookworm-slim` | Ese venv espera `/usr/bin/python3.11`. Las imágenes `python:*` instalan en `/usr/local/bin` y los shebangs fallan |
-| uid **1000**, no 1001 | `/home/node/.openclaw` es `drwx------` de uid 1000. Con otro uid el contenedor no puede ni entrar al directorio |
+| Backend y worker usan **debian + python3 de apt** | El venv de OpenClaw lleva rutas horneadas (`home = /usr/bin`). Las imágenes `python:*` lo instalan en `/usr/local/bin` y el venv resuelve a una stdlib incompleta |
+| El worker OCR ejecuta **`python3`**, no `python` | Con debian no existe el alias `python` |
+| El worker OCR **no** lleva el venv en el PATH | Ejecuta su propio código con el python del sistema; con el venv delante cargaría su stdlib y fallaría con `No module named '_csv'` |
+| El worker OCR sí monta el workspace (solo lectura) | La cola pesada también transcribe, y eso necesita los scripts y el intérprete del venv |
+| Un solo id por trabajo | Se pasa `job_id=` a RQ para que el id del POST, la carpeta de salida y la descarga sean el mismo |
 
-### Aislamiento: el original nunca se toca
-
-`tts.py` hace `makedirs()` de su carpeta temporal aunque se le pase `--output`,
-y resuelve los modelos como `../tts_models`. Con el volumen en solo lectura eso
-fallaría.
-
-Solución: el portal **copia el script** a su propio directorio escribible y
-sustituye su `TTS_DIR` por la ruta absoluta real. El script original queda
-intacto.
-
-### Validación realizada sin build
-
-Se verificó el funcionamiento completo usando imágenes existentes y montando el
-código por la API de archivos:
-
-- ✅ Redis arrancado y respondiendo (`PONG`)
-- ✅ Backend FastAPI sirviendo `/api/health` → `{"status":"ok","version":"0.1.0"}`
-- ✅ Conectividad entre contenedores por la red `herramientas-portal`
-- ✅ Validación de entrada: 31 pruebas pytest pasando en local
-- ✅ Frontend compilado: 232 KB JS (72 KB gzip) + 13 KB CSS
-
-Lo único **no** verificado en el servidor es el `nginx` del frontend, porque
-requiere construir su imagen. Su configuración sí está validada por sintaxis.
-
-### Habilitar BUILD si se quiere automatizar
-
-En el `docker-compose.yml` del `dockerproxy`, añadir:
-
-```yaml
-environment:
-  BUILD: 1
-```
-
-Y recrear el proxy. Considera si vale la pena: `BUILD=1` permite construir
-imágenes arbitrarias, que es una capacidad potente.

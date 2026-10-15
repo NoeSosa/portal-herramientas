@@ -112,20 +112,33 @@ async def subir_archivo(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     sufijo = transcripcion.SUFIJO_POR_TIPO[validado.tipo_detectado]
-    job_id = uuid.uuid4().hex[:12]
 
-    ruta_entrada = settings.upload_dir / f"transcribir-{job_id}{sufijo}"
+    # Se genera primero el id para poder nombrar el archivo, y **se le pasa a RQ
+    # como id del job** (`job_id=`). Así hay un solo identificador: el que
+    # devuelve el POST, el de la carpeta de salida y el de la descarga son el
+    # mismo. Sin esto, el worker escribía en `outputs/<id-propio>` mientras la
+    # descarga buscaba `outputs/<uuid-de-rq>` y respondía 404.
+    nombre_entrada = uuid.uuid4().hex[:12]
+
+    ruta_entrada = settings.upload_dir / f"transcribir-{nombre_entrada}{sufijo}"
     ruta_entrada.write_bytes(validado.contenido)
 
-    cola_pesada().enqueue(
+    # ⚠️ El id que se devuelve al usuario debe ser el **id real del job de RQ**.
+    # Antes se generaba aquí un id corto aparte, así que `GET /transcribir/<id>`
+    # buscaba una clave que RQ nunca creó y respondía 404 aunque el trabajo
+    # hubiera terminado bien.
+    job = cola_pesada().enqueue(
         procesar_transcripcion,
         str(ruta_entrada),
-        job_id=job_id,
+        id_trabajo=nombre_entrada,
+        job_id=nombre_entrada,
         idioma=idioma or None,
         motor=motor,
         job_timeout=settings.job_timeout_seconds,
         result_ttl=86400,
     )
+
+    job_id = job.id
 
     logger.info(
         "Transcripción encolada: job=%s tipo=%s bytes=%d",

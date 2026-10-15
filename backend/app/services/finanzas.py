@@ -84,6 +84,11 @@ def _ejecutar(argumentos: list[str], *, timeout: int,
 
     script = puente.copiar_script("finanzas.py", settings)
 
+    # `finanzas.py` resuelve su ledger como `../finanzas` y **escribe** en él al
+    # registrar. El volumen de OpenClaw es de solo lectura, así que la carpeta
+    # se copia (refrescada en cada consulta) junto a la copia del script.
+    puente.copiar_contexto("finanzas", settings)
+
     try:
         resultado = puente.ejecutar_python(
             [str(script), *argumentos],
