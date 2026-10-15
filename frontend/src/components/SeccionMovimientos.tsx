@@ -2,29 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 
 import { IconoAviso, IconoOk } from "./Iconos";
 import { pedir } from "../lib/api";
-
-interface Movimiento {
-  id: string;
-  fecha: string | null;
-  tipo: string | null;
-  categoria: string | null;
-  monto: number | null;
-  nota: string | null;
-  cuenta: string | null;
-}
-
-interface ListaMovimientos {
-  total_transacciones: number;
-  total_ingresos: number;
-  total_gastos: number;
-  balance: number;
-  transacciones: Movimiento[];
-}
-
-interface ResultadoOperacion {
-  ok: boolean;
-  mensaje: string;
-}
+import {
+  type ListaMovimientos,
+  type Movimiento,
+  borrarMovimiento,
+  crearMovimiento,
+  duplicarMovimiento,
+  editarMovimiento,
+  leerMovimientos,
+} from "../lib/ledger";
 
 interface EstadoFinanzas {
   disponible: boolean;
@@ -91,16 +77,8 @@ export function SeccionMovimientos() {
     setCargando(true);
     setError(null);
 
-    const parametros = new URLSearchParams();
-    if (buscar.trim()) parametros.set("buscar", buscar.trim());
-    if (categoria.trim()) parametros.set("categoria", categoria.trim());
-    if (tipo) parametros.set("tipo", tipo);
-    parametros.set("limite", String(limite));
-
     try {
-      const datos = await pedir<ListaMovimientos>(
-        `/finanzas/movimientos?${parametros.toString()}`,
-      );
+      const datos = await leerMovimientos({ buscar, categoria, tipo, limite });
       setLista(datos);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido.");
@@ -153,19 +131,12 @@ export function SeccionMovimientos() {
     setError(null);
 
     try {
-      const resultado = await pedir<ResultadoOperacion>(
-        `/finanzas/movimientos/${borrador.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            monto: borrador.monto,
-            categoria: borrador.categoria,
-            nota: borrador.nota ?? "",
-            fecha: borrador.fecha,
-          }),
-        },
-      );
+      const resultado = await editarMovimiento(borrador.id, {
+        monto: borrador.monto,
+        categoria: borrador.categoria,
+        nota: borrador.nota ?? "",
+        fecha: borrador.fecha,
+      });
       setAviso(resultado.mensaje);
       cerrarEdicion();
       await cargar();
@@ -181,16 +152,12 @@ export function SeccionMovimientos() {
     setError(null);
 
     try {
-      const resultado = await pedir<ResultadoOperacion>("/finanzas/movimientos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          monto: nuevo.monto,
-          tipo: nuevo.tipo,
-          categoria: nuevo.categoria,
-          nota: nuevo.nota ?? "",
-          fecha: nuevo.fecha,
-        }),
+      const resultado = await crearMovimiento({
+        monto: nuevo.monto ?? 0,
+        tipo: nuevo.tipo ?? "gasto",
+        categoria: nuevo.categoria ?? "",
+        nota: nuevo.nota ?? "",
+        fecha: nuevo.fecha,
       });
       setAviso(resultado.mensaje);
       setNuevo(movimientoVacio());
@@ -209,10 +176,7 @@ export function SeccionMovimientos() {
       setError(null);
 
       try {
-        const resultado = await pedir<ResultadoOperacion>(
-          `/finanzas/movimientos/${id}?confirmar=true`,
-          { method: "DELETE" },
-        );
+        const resultado = await borrarMovimiento(id);
         setAviso(resultado.mensaje);
         setConfirmandoBorrado(null);
         await cargar();
@@ -586,6 +550,28 @@ export function SeccionMovimientos() {
                             className="text-tinta-tenue hover:text-acento"
                           >
                             Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={enVuelo}
+                            onClick={async () => {
+                              setOcupado(movimiento.id);
+                              setError(null);
+                              try {
+                                const r = await duplicarMovimiento(movimiento);
+                                setAviso(r.mensaje);
+                                await cargar();
+                              } catch (err) {
+                                setError(
+                                  err instanceof Error ? err.message : "No se pudo duplicar.",
+                                );
+                              } finally {
+                                setOcupado(null);
+                              }
+                            }}
+                            className="text-tinta-tenue hover:text-acento disabled:opacity-30"
+                          >
+                            Duplicar
                           </button>
                           <button
                             type="button"

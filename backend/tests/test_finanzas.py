@@ -252,18 +252,43 @@ class TestEscritura:
             svc.fijar_limite_presupuesto("comida", -50, settings=Settings())
 
 
-class TestSinOperacionesDeDinero:
-    """El portal no debe poder mover fondos. Es una decisión de diseño."""
+class TestOperacionesDeDinero:
+    """Transferir y pagar dinero existen, pero con guardias.
 
-    def test_no_hay_endpoints_de_transferencia_ni_pago(self, cliente: TestClient) -> None:
-        rutas = {
-            ruta.path
-            for ruta in app.routes
-            if getattr(ruta, "path", "").startswith("/api/finanzas")
-        }
+    Historial: al principio el portal NO permitía mover dinero (solo mantener
+    el registro). El usuario pidió control total, así que las operaciones se
+    añadieron en `admin_finanzas.py` con confirmación explícita. Lo que sigue
+    prohibido es que ocurran **sin** confirmación, o que el portal mueva dinero
+    por su cuenta (automatismos, reintentos, tareas en segundo plano).
+    """
 
-        assert not any("transferir" in r for r in rutas)
-        assert not any("pagar" in r or "pago" in r for r in rutas)
+    def test_transferir_exige_confirmacion(self, cliente: TestClient) -> None:
+        respuesta = cliente.post(
+            "/api/finanzas/transferir",
+            json={"origen": "a", "destino": "b", "monto": 10},
+        )
+
+        assert respuesta.status_code == 400
+        assert "confirmar" in respuesta.json()["detail"].lower()
+
+    def test_pagar_exige_confirmacion(self, cliente: TestClient) -> None:
+        respuesta = cliente.post(
+            "/api/finanzas/tarjetas/klar/pagar", json={"tarjeta": "klar"}
+        )
+
+        assert respuesta.status_code == 400
+        assert "confirmar" in respuesta.json()["detail"].lower()
+
+    def test_las_operaciones_de_dinero_viven_en_su_propio_modulo(self) -> None:
+        """Separadas del módulo principal para que sea evidente qué mueve dinero.
+
+        `finanzas.py` mantiene el registro; `administracion.py` y su router son
+        los únicos que tocan saldos.
+        """
+        from app.services import finanzas as modulo_registro
+
+        nombres = [n for n in dir(modulo_registro) if n.startswith(("transferir", "pagar"))]
+        assert nombres == []
 
     def test_las_acciones_de_escritura_del_servicio_son_solo_el_registro(self) -> None:
         escrituras = [
