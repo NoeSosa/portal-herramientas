@@ -73,7 +73,14 @@ export async function pedir<T>(
   return (await respuesta.json()) as T;
 }
 
-/** Sube uno o más archivos a un endpoint de herramienta. */
+/** Sube uno o más archivos a un endpoint de herramienta.
+ *
+ * ⚠️ El campo del archivo se llama **`archivo`** (singular) porque así lo
+ * declaran los endpoints del backend (`archivo: UploadFile = File(...)`).
+ * Estuvo como `archivos` y eso rompía **todas** las herramientas de subida con
+ * un 422 `Field required` de FastAPI: el archivo llegaba con un nombre que
+ * ningún endpoint leía. Si se renombra aquí, hay que renombrarlo allá.
+ */
 export async function subirArchivos<T>(
   ruta: string,
   archivos: File[],
@@ -81,7 +88,7 @@ export async function subirArchivos<T>(
 ): Promise<T> {
   const datos = new FormData();
   for (const archivo of archivos) {
-    datos.append("archivos", archivo, archivo.name);
+    datos.append("archivo", archivo, archivo.name);
   }
   for (const [clave, valor] of Object.entries(campos)) {
     datos.append(clave, valor);
