@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3-flash-preview"
 
+    finanzas_usuario: str = "noe"
+    """Titular del ledger que consulta el panel de finanzas.
+
+    El script `finanzas.py` es multi-usuario; el portal trabaja sobre uno solo
+    para no exponer datos de terceros en la interfaz.
+    """
+
     herramientas_scripts_dir: Path = Path("/home/node/.openclaw/workspace/scripts")
     """Carpeta con los scripts de Python (tts.py, transcribir_av.py…).
 

@@ -105,3 +105,42 @@ python scripts/capturar.py "http://<ip-frontend>/" /tmp/portal.png
 Sirve para revisar el resultado sin abrir el navegador. Para el contraste,
 el cálculo WCAG está en el historial de `docs/DISENO.md` (script de luminancia
 sobre los tokens OKLCH).
+
+---
+
+## Patrones de interacción (decididos al implementar las herramientas)
+
+Estas reglas se fijaron al añadir cada herramienta y aplican a las siguientes.
+
+### Trabajo síncrono vs. cola
+
+| Duración | Patrón | Ejemplos |
+|---|---|---|
+| Segundos | Petición HTTP normal, script en un hilo | TTS, analizar imagen, identificar canción |
+| Minutos | Encolar en RQ + consultar estado + descargar | Separador por OCR, transcribir audio/video |
+
+Regla: si puede tardar más que la paciencia de una petición HTTP (≈30 s), va a
+la cola. El usuario debe poder cerrar la pestaña sin perder el trabajo.
+
+### Progreso indeterminado
+
+Cuando la duración no se conoce (el OCR no reporta porcentaje), la barra
+**barre de ida y vuelta** (`animate-pulso`) en vez de avanzar. Una barra que
+avanza sola mentiría sobre el avance real: es un dato falso en una interfaz
+que presume de datos.
+
+### Acciones con consecuencias: dos pasos
+
+Registrar un movimiento en finanzas **nunca** ocurre en la misma petición que
+el análisis. Primero se muestra lo detectado (monto, categoría, cuenta) y solo
+tras la confirmación explícita del usuario se escribe en el ledger. El portal
+no mueve dinero: eso sigue siendo conversación con el agente.
+
+### Errores: qué se muestra y qué no
+
+- **Al usuario:** el mensaje del dominio (`"cuota agotada"`,
+  `"no se reconoció la canción"`), en el panel de resultado.
+- **Nunca:** trazas, rutas internas del servidor ni `stderr` completo. Eso va
+  al log del contenedor.
+- Un resultado negativo no es un error de servidor: "no hay coincidencia" es
+  **422**, no 500. La interfaz lo pinta distinto (ámbar vs. rojo).

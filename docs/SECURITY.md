@@ -186,3 +186,73 @@ docker compose build --no-cache
 
 **Rotación prioritaria:** primero las claves de API, luego las contraseñas de
 aplicación, y por último (si aplica) la llave SSH del servidor.
+
+---
+
+## Acceso al workspace de OpenClaw
+
+El portal monta el volumen de OpenClaw para leer los scripts de las
+herramientas. Tres decisiones de seguridad al respecto:
+
+### 1. Solo lectura (`:ro`)
+
+```yaml
+- openclaw-workspace:/home/node/.openclaw:ro
+```
+
+El portal **no puede modificar** los scripts del agente. Aunque un endpoint
+tuviera una vulnerabilidad de escritura, el kernel rechazaría el cambio en ese
+punto de montaje (`EROFS: read-only file system`).
+
+### 2. Los scripts se copian antes de ejecutarlos
+
+`tts.py` hace `makedirs()` de su carpeta temporal y resuelve los modelos de
+forma relativa, lo que falla con el volumen en solo lectura. En vez de
+modificar el original o montar en escritura, el portal **copia** el script a
+`/data/tts-runtime/` y sustituye su `TTS_DIR` por la ruta absoluta.
+
+Ventajas:
+- El original queda intacto (lo usa el agente por WhatsApp).
+- El portal solo ejecuta el script; nunca escribe en el workspace.
+- La copia se puede inspeccionar para ver qué se está ejecutando exactamente.
+
+### 3. Mismo uid que el dueño del volumen
+
+El backend corre como uid 1000 porque `/home/node/.openclaw` es
+`drwx------` de uid 1000. Esto significa que **el backend podría leer todo el
+volumen**: credenciales, MEMORY.md, conversaciones.
+
+Es una concesión consciente: es la única forma de leer los scripts. Si en el
+futuro se quiere acotar, las opciones son:
+
+- Copiar solo los scripts necesarios a un volumen propio del portal.
+- Ajustar los permisos del workspace en el host (`chmod` selectivo).
+
+### Lo que el portal NO hace con el volumen
+
+- No escribe en él (montaje `:ro`).
+- No lee `credentials/`, `identity/` ni `.env` — el código solo toca
+  `workspace/scripts/`, `workspace/venv/` y `workspace/tts_models/`.
+- No expone ninguna ruta del volumen al navegador.
+
+---
+
+## nginx: resolución dinámica del upstream
+
+```nginx
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+location /api/ {
+    set $upstream_backend "http://backend:8000";
+    proxy_pass $upstream_backend$request_uri;
+    ...
+}
+```
+
+**Por qué la variable:** sin ella, nginx resuelve `backend` una sola vez al
+arrancar y cachea la IP para siempre. Cuando el contenedor backend se recrea
+cambia de IP, y nginx sigue apuntando a la vieja devolviendo `502 Connection
+refused`. Fue un bug real observado durante el desarrollo.
+
+`127.0.0.11` es el DNS interno de Docker. Con `resolver` + variable, nginx
+re-resuelve en cada petición (con caché de 10 s).

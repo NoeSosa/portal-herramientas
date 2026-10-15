@@ -5,7 +5,13 @@ import { Layout } from "./components/Layout";
 import { TarjetaHerramienta } from "./components/TarjetaHerramienta";
 import { pedir } from "./lib/api";
 import { HERRAMIENTAS, buscarHerramienta } from "./lib/herramientas";
+import { PaginaCancion } from "./pages/PaginaCancion";
+import { PaginaComprobante } from "./pages/PaginaComprobante";
+import { PaginaFinanzas } from "./pages/PaginaFinanzas";
+import { PaginaSeparador } from "./pages/PaginaSeparador";
 import { PaginaTTS } from "./pages/PaginaTTS";
+import { PaginaTranscribir } from "./pages/PaginaTranscribir";
+import { PaginaVision } from "./pages/PaginaVision";
 
 /** Estado de conexión con el backend. */
 type EstadoConexion = "cargando" | "ok" | "error";
@@ -20,6 +26,17 @@ interface InfoBackend {
     correo: boolean;
   };
 }
+
+/** Vista de cada herramienta ya implementada. */
+const VISTAS: Record<string, () => React.ReactElement> = {
+  tts: PaginaTTS,
+  vision: PaginaVision,
+  canzone: PaginaCancion,
+  transcribir: PaginaTranscribir,
+  comprobante: PaginaComprobante,
+  finanzas: PaginaFinanzas,
+  separador: PaginaSeparador,
+};
 
 export default function App() {
   const [vista, setVista] = useState<string>("inicio");
@@ -48,10 +65,11 @@ export default function App() {
 
   const volver = useCallback(() => setVista("inicio"), []);
 
-  if (vista === "tts") {
+  const Pagina = VISTAS[vista];
+  if (Pagina) {
     return (
-      <Layout alVolver={volver} titulo="Texto a voz">
-        <PaginaTTS />
+      <Layout alVolver={volver} titulo={buscarHerramienta(vista)?.nombre}>
+        <Pagina />
       </Layout>
     );
   }

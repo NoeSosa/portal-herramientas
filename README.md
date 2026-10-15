@@ -55,6 +55,23 @@ petición HTTP, el navegador cortaría la conexión y el trabajo se perdería. C
 RQ, la petición responde en milisegundos con un identificador, y el resultado se
 consulta después.
 
+### Cómo el portal accede a los scripts de OpenClaw
+
+Todas las herramientas que envuelven un script del agente (`analyze_image.py`,
+`transcribir_av.py`, `identify_song.py`, `finanzas.py`…) pasan por
+`app/services/puente.py`. Resuelve tres cosas que, hechas por separado en cada
+herramienta, se implementan mal:
+
+| Problema | Solución en el puente |
+|---|---|
+| El volumen se monta en **solo lectura** y varios scripts hacen `makedirs` de su `temp/` | El script se **copia** a `/data/runtime/scripts/` antes de ejecutarlo |
+| Cada script resuelve rutas **relativas a sí mismo** (`../.env`, `../tts_models`) | La copia vive a la misma profundidad, así que las rutas siguen resolviendo |
+| Las dependencias viven en el **venv** de OpenClaw, no en el python del contenedor | Siempre se ejecuta con `/home/node/.openclaw/workspace/venv/bin/python` |
+
+La clave de API se inyecta por **variable de entorno**, nunca por línea de
+comandos: los argumentos de un proceso son visibles para cualquiera que liste
+procesos en el host.
+
 ## Puesta en marcha
 
 ### 1. Preparar el entorno
@@ -150,12 +167,12 @@ herramientas-web/
 | Herramienta | Estado |
 |---|---|
 | Texto a voz (TTS) | ✅ Implementada |
-| Analizar imagen | ⏳ Pendiente |
-| Transcribir audio/video | ⏳ Pendiente |
-| Identificar canción | ⏳ Pendiente |
-| Comprobante a finanzas | ⏳ Pendiente |
-| Separador por sede | ⏳ Pendiente |
-| Panel de finanzas | ⏳ Pendiente |
+| Analizar imagen | ✅ Implementada |
+| Transcribir audio/video | ✅ Implementada |
+| Identificar canción | ✅ Implementada |
+| Comprobante a finanzas | ✅ Implementada |
+| Separador por sede | ✅ Implementada |
+| Panel de finanzas | ✅ Implementada |
 
 ## Comandos útiles
 
@@ -195,6 +212,38 @@ El build debe hacerse donde haya un `docker` CLI real:
 cd /ruta/a/herramientas-web
 docker compose up -d --build
 ```
+
+### Cómo el portal accede a los scripts de OpenClaw
+
+El compose corre en el **host**, pero los scripts viven en el **contenedor
+`openclaw-whatsapp`**. Se resuelve montando su volumen como solo lectura:
+
+```yaml
+volumes:
+  - openclaw-workspace:/home/node/.openclaw:ro   # :ro = solo lectura
+volumes:
+  openclaw-workspace:
+    external: true
+    name: agente-openclaw-sh6xwb_openclaw_data
+```
+
+**Tres detalles que no son obvios** y sin ellos no funciona:
+
+| Detalle | Por qué |
+|---|---|
+| La ruta es `/home/node/.openclaw` | Los venv de Python llevan rutas absolutas horneadas. El shebang de `piper` apunta a `/home/node/.openclaw/workspace/venv/bin/python`. Si se monta en otra ruta, no resuelve |
+| Base `debian:bookworm-slim` | Ese venv espera `/usr/bin/python3.11`. Las imágenes `python:*` instalan en `/usr/local/bin` y los shebangs fallan |
+| uid **1000**, no 1001 | `/home/node/.openclaw` es `drwx------` de uid 1000. Con otro uid el contenedor no puede ni entrar al directorio |
+
+### Aislamiento: el original nunca se toca
+
+`tts.py` hace `makedirs()` de su carpeta temporal aunque se le pase `--output`,
+y resuelve los modelos como `../tts_models`. Con el volumen en solo lectura eso
+fallaría.
+
+Solución: el portal **copia el script** a su propio directorio escribible y
+sustituye su `TTS_DIR` por la ruta absoluta real. El script original queda
+intacto.
 
 ### Validación realizada sin build
 

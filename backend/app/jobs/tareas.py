@@ -36,6 +36,9 @@ def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
 
     from app.services.separador import ErrorSeparador, ejecutar_separador, limpiar_entrada
 
+    # `limpiar_entrada` es genérica (borra cualquier archivo de entrada), pero su
+    # nombre quedó atado al separador. Se reutiliza tal cual en vez de duplicar
+    # la lógica de borrado.
     try:
         resultado = ejecutar_separador(
             ruta_pdf,
@@ -56,3 +59,59 @@ def procesar_separador(ruta_pdf: str, job_id: str) -> dict[str, object]:
         resultado.get("verificar"),
     )
     return {"ok": True, **resultado}
+
+
+def procesar_transcripcion(
+    ruta_entrada: str,
+    job_id: str,
+    idioma: str | None = None,
+    motor: str = "auto",
+) -> dict[str, object]:
+    """Transcribe un audio o video y deja el texto en outputs/<job_id>.
+
+    Corre en la cola pesada junto al separador: la transcripción tarda minutos
+    y necesita los mismos límites de CPU y memoria.
+
+    Devuelve ``{"ok": False, "error": …}`` en vez de lanzar: RQ registraría
+    la excepción con su traza, y aquí el mensaje debe ser legible para el
+    usuario final.
+    """
+    settings = obtener_settings()
+    settings.preparar_directorios()
+
+    directorio = settings.output_dir / job_id
+    directorio.mkdir(parents=True, exist_ok=True)
+
+    logger.info(
+        "Job %s: transcribiendo %s (idioma=%s motor=%s)",
+        job_id,
+        Path(ruta_entrada).name,
+        idioma or "auto",
+        motor,
+    )
+
+    from app.services.transcripcion import ErrorTranscripcion, transcribir
+
+    # El borrado del archivo de entrada reutiliza el helper del separador: es
+    # genérico (borra cualquier archivo) aunque su nombre venga de ahí.
+    from app.services.separador import limpiar_entrada
+
+    try:
+        texto = transcribir(
+            Path(ruta_entrada),
+            idioma=idioma,
+            motor=motor,
+            settings=settings,
+        )
+    except ErrorTranscripcion as exc:
+        logger.error("Job %s falló: %s", job_id, exc)
+        return {"ok": False, "error": str(exc)[:400]}
+    finally:
+        # El audio puede contener conversaciones privadas: se borra siempre.
+        limpiar_entrada(ruta_entrada)
+
+    (directorio / "transcripcion.txt").write_text(texto + "\n", encoding="utf-8")
+
+    logger.info("Job %s completado: %d caracteres", job_id, len(texto))
+
+    return {"ok": True, "texto": texto, "caracteres": len(texto)}

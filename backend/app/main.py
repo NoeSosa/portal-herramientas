@@ -17,7 +17,15 @@ from app import __version__
 from app.core.config import obtener_settings
 from app.core.logging_config import configurar_logging
 from app.core.seguridad import ArchivoInvalidoError
-from app.routers import health, separador, tts
+from app.routers import (
+    cancion,
+    finanzas,
+    health,
+    separador,
+    transcribir,
+    tts,
+    vision,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +72,10 @@ def crear_aplicacion() -> FastAPI:
     app.include_router(health.router, prefix="/api", tags=["sistema"])
     app.include_router(tts.router, prefix="/api", tags=["herramientas"])
     app.include_router(separador.router, prefix="/api", tags=["herramientas"])
+    app.include_router(vision.router, prefix="/api", tags=["herramientas"])
+    app.include_router(cancion.router, prefix="/api", tags=["herramientas"])
+    app.include_router(transcribir.router, prefix="/api", tags=["herramientas"])
+    app.include_router(finanzas.router, prefix="/api", tags=["finanzas"])
 
     @app.exception_handler(ArchivoInvalidoError)
     async def _manejar_archivo_invalido(

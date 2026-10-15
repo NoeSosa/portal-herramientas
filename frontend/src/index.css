@@ -48,6 +48,23 @@
 
   /* --- Curva de movimiento lineal (playbook: linear 0.25-0.35s) --------- */
   --ease-industrial: linear;
+
+  /* --- Animación de progreso indeterminado ------------------------------ */
+  /* El barrido de la barra va y vuelve: en trabajos de duración desconocida
+     una barra que avanza sola mentiría sobre el avance real. */
+  --animate-pulso: pulso 1.6s linear infinite;
+}
+
+@keyframes pulso {
+  0% {
+    transform: translateX(-110%);
+  }
+  50% {
+    transform: translateX(210%);
+  }
+  100% {
+    transform: translateX(-110%);
+  }
 }
 
 /* ==========================================================================
