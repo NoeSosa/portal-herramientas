@@ -1,0 +1,2116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap">
+<title>Panel · Separador de PDFs</title>
+<style>
+/* ==========================================================================
+   Panel del separador — MISMA dirección estética que el Portal de Herramientas
+   --------------------------------------------------------------------------
+   Dirección: Industrial / Utilitarian (skill `frontend-design`).
+
+     Fuente de los tokens: herramientas-web/frontend/src/index.css (@theme).
+     Se copian los MISMOS valores (oklch, tipografías, radios, easing) para que
+     el panel se vea como una página más del portal y no como un injerto.
+
+     Fonts:   Display Archivo Black · Body Barlow · Datos JetBrains Mono
+     Colors:  Neutros fríos + acento ámbar "hazard"
+     Layout:  Rejillas rígidas, paneles con corner ticks, etiquetas de datos mono
+     Motion:  Linear 0.25-0.35s para estados; entrada suave (ease-out ≤0.3s)
+              Solo `transform` y `opacity` (skill `animations`), con
+              `prefers-reduced-motion` respetado.
+
+   Reglas de animación aplicadas (skill `animations`):
+     · Nada de animar width/height/top/left → barras con `scaleX`, barridos con
+       `translate`, entradas con `translateY` + `opacity`.
+     · Micro-interacciones 150ms · transiciones de estado 250-350ms · nada >500ms.
+     · Lineal para barras de progreso y barridos; `ease-out` solo al aparecer.
+   ========================================================================== */
+:root{
+  color-scheme: dark;
+
+  /* --- Paleta (idéntica al portal) --------------------------------------- */
+  --fondo: oklch(0.16 0.005 260);
+  --panel: oklch(0.21 0.006 260);
+  --panel-alto: oklch(0.26 0.007 260);
+  --linea: oklch(0.32 0.008 260);
+  --linea-fuerte: oklch(0.42 0.01 260);
+  --tinta: oklch(0.93 0.003 260);
+  --tinta-tenue: oklch(0.76 0.006 260);
+  --tinta-apagada: oklch(0.72 0.006 260);
+  --acento: oklch(0.78 0.16 78);
+  --acento-tenue: oklch(0.4 0.07 78);
+  --ok: oklch(0.72 0.14 155);
+  --aviso: oklch(0.78 0.14 85);
+  --error: oklch(0.62 0.19 27);
+
+  /* --- Tipografía -------------------------------------------------------- */
+  --font-display: "Archivo Black", "Arial Black", system-ui, sans-serif;
+  --font-sans: "Barlow", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* --- Geometría y movimiento -------------------------------------------- */
+  --r: 2px;                     /* radios casi rectos, coherente con lo industrial */
+  --ease: linear;               /* playbook: linear 0.25-0.35s */
+  --t-micro: 0.15s;
+  --t-estado: 0.3s;
+  --sombra: 0 1px 0 oklch(0 0 0 / 0.4);
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0; min-height:100dvh;
+  background-color:var(--fondo);
+  color:var(--tinta);
+  font:400 14px/1.5 var(--font-sans);
+  -webkit-font-smoothing:antialiased;
+  /* Hatch diagonal sutil: el "signature move" del portal. */
+  background-image:repeating-linear-gradient(-45deg,
+    transparent 0, transparent 31px,
+    oklch(0.2 0.006 260 / 0.22) 31px, oklch(0.2 0.006 260 / 0.22) 32px);
+}
+
+/* Titulares en la display del sistema, mayúsculas y tracking cerrado. */
+h1{font-family:var(--font-display); font-size:15px; margin:0; text-transform:uppercase;
+   letter-spacing:-0.02em; display:flex; align-items:center; gap:8px}
+h1 .marca{color:var(--acento); font-family:var(--font-mono); font-size:15px; letter-spacing:0}
+
+/* Encabezado de sección = patrón `.regla` del portal (etiqueta + línea). */
+h2{font-family:var(--font-mono); font-size:.75rem; font-weight:500; letter-spacing:.1em;
+   text-transform:uppercase; color:var(--tinta-apagada); margin:0 0 10px;
+   display:flex; align-items:center; gap:.75rem}
+h2::after{content:""; flex:1; height:1px; background-color:var(--linea)}
+h2 .n{color:var(--acento)}
+
+a{color:var(--tinta-tenue); text-decoration:none;
+  transition:color var(--t-micro) var(--ease)}
+a:hover{color:var(--acento); text-decoration:underline}
+
+.app{max-width:1240px;margin:0 auto;padding:14px 16px 40px}
+
+/* --------------------------------------------------------------------------
+   Barra superior: datos del sistema como etiquetas mono
+   -------------------------------------------------------------------------- */
+.barra-sup{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+           padding:10px 12px;background-color:var(--panel);border:1px solid var(--linea);
+           margin-bottom:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.chip{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+      padding:3px 8px;border:1px solid var(--linea);background-color:var(--fondo);
+      color:var(--tinta-apagada);white-space:nowrap}
+.chip b{color:var(--tinta);font-weight:500}
+.chip.ok{border-color:var(--ok);color:var(--ok)}
+.chip.aviso{border-color:var(--aviso);color:var(--aviso)}
+.chip.error{border-color:var(--error);color:var(--error)}
+.chip.dry{border-color:var(--acento-tenue);color:var(--acento)}
+.chip.local{border-color:var(--acento);color:var(--acento)}
+
+/* --------------------------------------------------------------------------
+   Paneles con corner ticks (marca visual del sistema)
+   -------------------------------------------------------------------------- */
+.grid{display:grid;gap:14px;grid-template-columns:1fr 1fr}
+@media(max-width:980px){.grid{grid-template-columns:1fr}}
+
+.caja{position:relative;background-color:var(--panel);border:1px solid var(--linea);
+      padding:12px;grid-column:1/-1}
+.caja::before,.caja::after{content:"";position:absolute;width:8px;height:8px;pointer-events:none}
+.caja::before{top:-1px;left:-1px;border-top:2px solid var(--linea-fuerte);
+              border-left:2px solid var(--linea-fuerte)}
+.caja::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--linea-fuerte);
+             border-right:2px solid var(--linea-fuerte)}
+/* El acento del corner tick marca la sección que está "viva" (progreso). */
+.caja.viva::before,.caja.viva::after{border-color:var(--acento)}
+
+.fila-botones{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+
+/* --------------------------------------------------------------------------
+   Controles: rectangulares, etiqueta mono en mayúsculas
+   -------------------------------------------------------------------------- */
+button{font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.08em;
+       text-transform:uppercase;color:var(--tinta);background-color:var(--panel-alto);
+       border:1px solid var(--linea);border-radius:var(--r);padding:7px 11px;cursor:pointer;
+       transition:border-color var(--t-micro) var(--ease),
+                  background-color var(--t-micro) var(--ease),
+                  color var(--t-micro) var(--ease), opacity var(--t-micro) var(--ease)}
+button:hover:not(:disabled){border-color:var(--acento);background-color:var(--panel);
+                            color:var(--acento)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primario{border-color:var(--acento);color:var(--acento)}
+button.primario:hover:not(:disabled){background-color:var(--acento);color:var(--fondo)}
+button.peligro:hover:not(:disabled){border-color:var(--error);color:var(--error)}
+button.mini{padding:4px 8px;font-size:10.5px}
+
+label.dry{display:flex;gap:6px;align-items:center;font-family:var(--font-mono);font-size:11px;
+          letter-spacing:.06em;text-transform:uppercase;color:var(--tinta-apagada);
+          user-select:none;cursor:pointer;transition:color var(--t-micro) var(--ease)}
+label.dry:hover{color:var(--tinta-tenue)}
+input[type=checkbox]{accent-color:var(--acento);width:13px;height:13px;margin:0}
+
+:focus-visible{outline:2px solid var(--acento);outline-offset:2px}
+
+/* --------------------------------------------------------------------------
+   Tablas de datos
+   -------------------------------------------------------------------------- */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:6px;border-bottom:1px solid var(--linea);vertical-align:middle}
+th{font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.1em;
+   text-transform:uppercase;color:var(--tinta-apagada)}
+tbody tr{transition:background-color var(--t-micro) var(--ease)}
+tbody tr:hover{background-color:var(--panel-alto)}
+.num{font-family:var(--font-mono);color:var(--tinta-apagada);font-variant-numeric:tabular-nums}
+
+.vac{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+     color:var(--tinta-apagada);padding:8px 2px}
+
+/* Zona de arrastre: borde discontinuo que se enciende con el acento. */
+.zonasub{display:flex;align-items:center;gap:8px;padding:10px;margin-bottom:10px;
+         border:1px dashed var(--linea);color:var(--tinta-apagada);font-size:12.5px;
+         transition:border-color var(--t-micro) var(--ease), color var(--t-micro) var(--ease)}
+.zonasub.encima{border-color:var(--acento);color:var(--tinta)}
+
+/* --------------------------------------------------------------------------
+   Barras de progreso: `scaleX` (nunca width) con transición lineal
+   -------------------------------------------------------------------------- */
+.barra{position:relative;height:8px;background-color:oklch(0.12 0.004 260);
+       border:1px solid var(--linea);overflow:hidden}
+.relleno{height:100%;width:100%;transform:scaleX(0);transform-origin:left center;
+         background-color:var(--acento);transition:transform .35s var(--ease)}
+.relleno.ok{background-color:var(--ok)}
+.relleno.aviso{background-color:var(--aviso)}
+.relleno.error{background-color:var(--error)}
+.barrafila{display:flex;align-items:center;gap:10px;margin:7px 0}
+.barrafila .barra{flex:1}
+.barrafila > .num{font-size:11px;width:84px;flex:none}
+.barrafila > .num:last-child{width:44px;text-align:right}
+
+/* --------------------------------------------------------------------------
+   Rejilla de páginas: cada hoja es un mini-panel; la activa barre con un
+   gradiente que se desplaza (translate, lineal) — el "sliding" del playbook.
+   -------------------------------------------------------------------------- */
+.paginas{display:grid;grid-template-columns:repeat(auto-fill,minmax(32px,1fr));gap:4px;margin:12px 0 6px}
+.hoja{position:relative;height:32px;background-color:var(--fondo);border:1px solid var(--linea);
+      display:flex;align-items:center;justify-content:center;
+      font-family:var(--font-mono);font-size:10.5px;color:var(--tinta-apagada);
+      transition:transform var(--t-micro) var(--ease), opacity var(--t-micro) var(--ease),
+                 border-color var(--t-micro) var(--ease), color var(--t-micro) var(--ease)}
+.hoja.ok{border-color:var(--ok);color:var(--ok)}
+.hoja.aviso{border-color:var(--aviso);color:var(--aviso)}
+.hoja.descartada{border-color:var(--acento-tenue);color:var(--acento)}
+.hoja.activa{border-color:var(--acento);color:var(--acento);background-color:oklch(0.2 0.02 78)}
+.escaner{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.escaner::before{content:"";position:absolute;left:0;right:0;height:100%;
+  background:linear-gradient(180deg,transparent,oklch(0.78 0.16 78 / .28),transparent)}
+
+/* --------------------------------------------------------------------------
+   Métricas: dato grande, etiqueta pequeña (jerarquía del portal)
+   -------------------------------------------------------------------------- */
+.metricas{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
+.metrica{background-color:var(--fondo);border:1px solid var(--linea);padding:7px 9px}
+.metrica .k{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+            color:var(--tinta-apagada)}
+.metrica .v{font-family:var(--font-mono);font-size:16px;color:var(--tinta);
+            font-variant-numeric:tabular-nums}
+
+.lista-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+/* --------------------------------------------------------------------------
+   Log en vivo
+   -------------------------------------------------------------------------- */
+.log{height:210px;overflow:auto;background-color:oklch(0.12 0.004 260);
+     border:1px solid var(--linea);padding:8px;
+     font:11.5px/1.6 var(--font-mono);white-space:pre-wrap;color:var(--tinta-tenue)}
+.log div{animation:entrar .22s ease-out backwards}
+.log .ok{color:var(--ok)}
+.log .aviso{color:var(--aviso)}
+.log .error{color:var(--error)}
+.log .info{color:var(--tinta-tenue)}
+
+/* Chips de estado de la cola */
+.estado-chip{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+             padding:2px 7px;border:1px solid var(--linea);color:var(--tinta-apagada);white-space:nowrap}
+.estado-chip.en_proceso{border-color:var(--acento);color:var(--acento)}
+.estado-chip.ok{border-color:var(--ok);color:var(--ok)}
+.estado-chip.error{border-color:var(--error);color:var(--error)}
+.estado-chip.pausado{border-color:var(--aviso);color:var(--aviso)}
+
+/* --------------------------------------------------------------------------
+   Resultados: corridas desplegables, sedes y archivos
+   -------------------------------------------------------------------------- */
+.corrida{border:1px solid var(--linea);margin-bottom:8px;background-color:var(--fondo);
+         animation:entrar .3s ease-out backwards}
+.corrida > summary{cursor:pointer;padding:9px 10px;background-color:var(--panel-alto);
+  font-family:var(--font-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  transition:color var(--t-micro) var(--ease), background-color var(--t-micro) var(--ease)}
+.corrida > summary:hover{color:var(--acento)}
+.sede{border-top:1px solid var(--linea);padding:9px 10px}
+.sede h4{margin:0 0 7px;font-family:var(--font-mono);font-size:11.5px;font-weight:500;
+         letter-spacing:.06em;text-transform:uppercase;color:var(--tinta);
+         display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.arch{display:flex;align-items:center;gap:8px;padding:4px 0;font-family:var(--font-mono);
+      font-size:11.5px;border-bottom:1px dashed var(--linea);
+      transition:color var(--t-micro) var(--ease)}
+.arch:last-child{border-bottom:none}
+.arch a{color:var(--tinta-tenue)}
+.arch a:hover{color:var(--acento)}
+.grupo{margin:7px 0 2px;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;
+       text-transform:uppercase;color:var(--tinta-apagada)}
+.tam{font-family:var(--font-mono);font-size:11px;color:var(--tinta-apagada)}
+
+/* --------------------------------------------------------------------------
+   Visor "hoja en vivo": miniatura de la página que se está leyendo, con barrido
+   de escaneo (translate + gradiente, lineal) y los datos detectados al lado.
+   -------------------------------------------------------------------------- */
+.visor{display:grid;grid-template-columns:158px minmax(200px,1fr) minmax(240px,1.15fr);
+       gap:14px;align-items:start;margin-bottom:6px}
+@media(max-width:900px){.visor{grid-template-columns:158px 1fr}}
+@media(max-width:640px){.visor{grid-template-columns:1fr}}
+.lectura{border:1px solid var(--linea);background-color:oklch(0.12 0.004 260);padding:8px 9px}
+.lectura .et{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;
+             text-transform:uppercase;color:var(--tinta-apagada);margin-bottom:5px}
+.texto-ocr{font-family:var(--font-mono);font-size:11px;line-height:1.5;color:var(--tinta-tenue);
+           max-height:128px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.texto-ocr mark{background-color:oklch(0.78 0.16 78 / .22);color:var(--acento);padding:0 2px}
+.texto-ocr .banda{display:block;border-top:1px dashed var(--linea);margin-top:4px;padding-top:3px;
+                  color:var(--tinta-apagada);font-size:10px;letter-spacing:.06em}
+.texto-ocr .banda b{color:var(--acento)}
+/* --------------------------------------------------------------------------
+   Cajas del OCR animadas sobre la hoja.
+   Cada renglón que detecta PaddleOCR llega con su polígono; se dibuja como un
+   recuadro que APARECE en orden de lectura. Los renglones con dato relevante
+   (serial / contador / modelo / fecha) se encienden en ámbar y se etiquetan.
+   Solo opacity + transform (skill `animations`); `--d` escalona la entrada.
+   -------------------------------------------------------------------------- */
+/* NOTA: la clase se llama `ocr-caja` (NO `caja`) porque `.caja` ya es la tarjeta
+   del panel: reusarla convertía TODAS las tarjetas en `position:absolute` y las
+   desalineaba/solapaba (bug detectado el 18/oct/2026). */
+.cajas{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.ocr-caja{position:absolute;border:1px solid oklch(0.86 0.02 250 / .38);border-radius:1px;
+      animation:caja-in .2s var(--ease) var(--d,0ms) both;will-change:transform,opacity}
+.ocr-caja.rel{border-color:oklch(0.78 0.16 78 / .85);border-width:1.5px;
+          background-color:oklch(0.78 0.16 78 / .10)}
+.ocr-caja.rel::before{content:attr(data-r);position:absolute;left:-1px;top:-11px;
+                  font-family:var(--font-mono);font-size:8px;line-height:1;letter-spacing:.08em;
+                  text-transform:uppercase;color:oklch(0.16 0.004 260);background-color:var(--acento);
+                  padding:2px 3px;animation:caja-in .2s var(--ease) var(--d,0ms) both}
+.ocr-caja.rel[data-r="serial"]::after{content:"";position:absolute;inset:-3px;
+                  border:1px solid oklch(0.78 0.16 78 / .8);
+                  animation:latido-caja 1.5s linear var(--d,0ms) 2 both}
+@keyframes caja-in{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+@keyframes latido-caja{0%{opacity:0;transform:scale(1)}25%{opacity:.9}100%{opacity:0;transform:scale(1.08)}}
+.franja{position:absolute;left:0;right:0;border-top:2px solid var(--acento);
+        border-bottom:2px solid var(--acento);background-color:oklch(0.78 0.16 78 / .12);
+        pointer-events:none;transition:top .18s var(--ease), height .18s var(--ease)}
+.franja::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;
+               background-color:oklch(0.78 0.16 78 / .5)}
+.parcial{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+         color:var(--acento);border:1px solid var(--acento-tenue);padding:1px 6px;margin-left:6px}
+/* Leyenda de colores del visor (los recuadros son solo visuales). */
+.leyenda{float:right;font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;color:var(--tinta-apagada);
+         text-transform:none;display:flex;align-items:center;gap:4px}
+.leyenda .sw{display:inline-block;width:9px;height:9px;border:1.5px solid var(--acento);
+             background-color:oklch(0.78 0.16 78 / .14);margin-left:6px}
+.leyenda .sw.s2{border:1px solid oklch(0.86 0.02 250 / .5);background-color:transparent}
+.hoja-viva{position:relative;border:1px solid var(--linea);background-color:var(--fondo);
+           min-height:158px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+/* El lienzo envuelve EXACTAMENTE la hoja: así las coordenadas del OCR (0..1)
+   caen en su sitio y las cajas no se desalinean al centrar la imagen. */
+.lienzo{position:relative;display:block;width:100%;line-height:0}
+.hoja-viva img{width:100%;height:auto;display:block;opacity:0;transition:opacity var(--t-estado) var(--ease)}
+.hoja-viva img.cargada{opacity:1}
+.hoja-viva .escaner::before{animation:none}
+.visor.trabajando .hoja-viva .escaner::before{animation:barrido 1.7s linear infinite}
+.sin-mini{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--tinta-apagada);padding:10px;text-align:center;line-height:1.2;display:block}
+.datos-vivos{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;
+             background-color:var(--linea);border:1px solid var(--linea)}
+.datos-vivos > div{display:flex;justify-content:space-between;gap:10px;padding:6px 9px;
+                   background-color:var(--panel)}
+.datos-vivos .et{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;
+                 text-transform:uppercase;color:var(--tinta-apagada)}
+.datos-vivos span:last-child{font-family:var(--font-mono);font-size:11.5px;color:var(--tinta);
+                            text-align:right;overflow-wrap:anywhere}
+/* Botón bajo la hoja del visor principal (abre el visor maximizado). */
+.bajo-hoja{grid-column:1;display:flex;justify-content:center;margin-top:-8px}
+
+/* --------------------------------------------------------------------------
+   Cierre de la corrida (mensaje de TERMINADO + dónde quedaron los resultados)
+   -------------------------------------------------------------------------- */
+.fin{margin-top:12px;border:1px solid var(--ok);background-color:oklch(0.24 0.03 150 / .35);
+     padding:10px 12px}
+.fin .fin-cab{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.fin .fin-cab b{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;
+                text-transform:uppercase;color:var(--ok)}
+.fin .fin-cab .num{color:var(--tinta-tenue);font-size:11px}
+.fin .fin-datos{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;
+                background-color:var(--linea);border:1px solid var(--linea);margin-top:9px}
+.fin .fin-datos > div{background-color:var(--panel);padding:6px 9px;display:flex;
+                      justify-content:space-between;gap:8px}
+.fin .fin-datos .k{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;
+                   text-transform:uppercase;color:var(--tinta-apagada)}
+.fin .fin-datos .v{font-family:var(--font-mono);font-size:11.5px;color:var(--tinta)}
+.fin .fin-ruta{display:flex;gap:8px;align-items:baseline;margin-top:9px;flex-wrap:wrap}
+.fin .fin-ruta .et{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;
+                   text-transform:uppercase;color:var(--tinta-apagada)}
+.fin .fin-ruta code{font-family:var(--font-mono);font-size:11px;color:var(--acento);
+                    overflow-wrap:anywhere}
+.fin.error{border-color:var(--error);background-color:oklch(0.24 0.04 25 / .3)}
+.fin.error .fin-cab b{color:var(--error)}
+
+/* --------------------------------------------------------------------------
+   Visor maximizado
+   -------------------------------------------------------------------------- */
+.modal{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center}
+body.con-modal{overflow:hidden}
+.modal-hoja .nav:disabled{opacity:.3;cursor:default}
+.modal[hidden]{display:none}
+.modal-fondo{position:absolute;inset:0;background-color:oklch(0.08 0.004 260 / .82)}
+.modal-caja{position:relative;width:min(1240px,96vw);height:min(88vh,900px);display:grid;
+            grid-template-rows:auto minmax(0,1fr);background-color:var(--panel);
+            border:1px solid var(--linea-fuerte);animation:modal-in .2s var(--ease) both}
+@keyframes modal-in{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
+.modal-cab{display:flex;align-items:baseline;gap:12px;padding:10px 14px;
+           border-bottom:1px solid var(--linea);flex-wrap:wrap}
+.modal-cab h2{margin:0;font-family:var(--font-display);font-size:15px;letter-spacing:.02em}
+.modal-cab .num{font-size:11px;color:var(--tinta-tenue)}
+.modal-cab #m-seguir{margin-left:auto;cursor:pointer}
+.modal-cab #m-seguir.apagado{opacity:.55}
+.modal-cuerpo{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) 330px;
+              gap:14px;padding:14px;overflow:hidden;min-height:0}
+@media(max-width:1100px){.modal-cuerpo{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .modal-datos{grid-column:1/-1;max-height:32vh;overflow:auto}}
+@media(max-width:760px){.modal-cuerpo{grid-template-columns:1fr;overflow:auto}
+  .modal-caja{height:94vh}}
+.modal-hoja{display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;min-height:0}
+.lienzo-modal{position:relative;display:inline-block;line-height:0;max-height:100%;overflow:hidden;
+              border:1px solid var(--linea)}
+.lienzo-modal img{display:block;max-height:calc(88vh - 130px);max-width:100%;width:auto}
+.modal-hoja .nav{align-self:center}
+.texto-ocr.grande{max-height:none;height:calc(88vh - 250px);font-size:12px;line-height:1.65}
+.leyenda-bloque{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:6px;
+                font-family:var(--font-mono);font-size:10px;color:var(--tinta-apagada)}
+.leyenda-bloque .sw{display:inline-block;width:10px;height:10px;border:1.5px solid var(--acento);
+                    background-color:oklch(0.78 0.16 78 / .14);margin-right:5px;vertical-align:-1px}
+.leyenda-bloque .sw.s2{border:1px solid oklch(0.86 0.02 250 / .5);background-color:transparent}
+.modal-datos{min-width:0;overflow:auto;padding-right:2px}
+.modal-datos .et{display:block;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;
+                 text-transform:uppercase;color:var(--tinta-apagada);margin-bottom:6px}
+.trabajadores{display:grid;gap:8px}
+.trabajador{border:1px solid var(--linea);background-color:var(--fondo);padding:7px 9px}
+.trabajador .cab{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.trabajador .w{font-family:var(--font-mono);font-size:11.5px;color:var(--acento)}
+.trabajador .n{font-family:var(--font-mono);font-size:10.5px;color:var(--tinta-tenue)}
+.trabajador .barra{margin-top:6px;height:3px}
+.trabajador .pie{display:flex;justify-content:space-between;gap:8px;margin-top:5px;
+                 font-family:var(--font-mono);font-size:10px;color:var(--tinta-apagada)}
+.recientes{display:grid;gap:2px}
+.recientes .r{display:flex;justify-content:space-between;gap:8px;font-family:var(--font-mono);
+              font-size:10.5px;color:var(--tinta-tenue);padding:3px 0;border-bottom:1px dashed var(--linea)}
+.recientes .r b{color:var(--acento);font-weight:400}
+.recientes .r .m{color:var(--tinta-apagada)}
+
+/* --------------------------------------------------------------------------
+   Dos vistas: SIMPLE (por defecto, para cualquiera) y COMPLETA (lo técnico).
+   Todo lo que no es imprescindible lleva `data-avanzado="1"` y se oculta en
+   la simple. Las pestañas de Sistema y Seriales solo existen en la completa.
+   -------------------------------------------------------------------------- */
+body.vista-simple [data-avanzado]{display:none !important}
+body.vista-simple .tab[data-solo-completa]{display:none}
+.ayuda{margin:0 0 12px;padding:8px 11px;border-left:2px solid var(--acento);
+       background-color:oklch(0.2 0.01 260 / .5);font-family:var(--font-mono);
+       font-size:11.5px;line-height:1.5;color:var(--tinta-tenue)}
+.ayuda b{color:var(--acento);font-weight:500}
+body.vista-completa .ayuda{display:none}
+/* En la vista simple la hoja del visor manda: se le da algo más de aire. */
+body.vista-simple .visor{grid-template-columns:minmax(0,190px) minmax(0,1fr)}
+body.vista-simple .visor > .lectura,body.vista-simple .visor > .datos-vivos{display:none}
+
+.hoja.clic{cursor:pointer}
+/* Hoja ya leída por el OCR pero aún sin clasificar (progreso real, no el final) */
+.hoja.ocr{background-color:oklch(0.2 0.02 78 / .35);border-color:var(--acento-tenue);color:var(--tinta-tenue)}
+.workers{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+.wrk{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:10.5px;
+     letter-spacing:.04em;color:var(--tinta-apagada);border:1px solid var(--linea);padding:3px 8px;
+     background-color:var(--fondo)}
+.wrk b{color:var(--acento);font-weight:500}
+.wrk .mini{display:inline-block;width:44px;height:4px;background-color:oklch(0.12 0.004 260);
+           border:1px solid var(--linea);overflow:hidden}
+.wrk .mini i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;
+             background-color:var(--acento);transition:transform .3s var(--ease)}
+.wrk.activo{border-color:var(--acento-tenue)}
+.wrk .sn{color:var(--tinta-tenue)}
+/* Filtros: misma estética mono que las etiquetas de datos */
+.filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.filtros input[type=text],.filtros input[type=search],.filtros select,
+.form-alta input{font-family:var(--font-mono);font-size:11.5px;color:var(--tinta);
+  background-color:var(--fondo);border:1px solid var(--linea);border-radius:var(--r);padding:6px 8px;
+  min-width:130px;transition:border-color var(--t-micro) var(--ease)}
+.filtros input:hover,.filtros select:hover,.form-alta input:hover{border-color:var(--linea-fuerte)}
+.filtros input:focus,.filtros select:focus,.form-alta input:focus{outline:2px solid var(--acento);outline-offset:1px}
+.form-alta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;
+           align-items:center;margin-bottom:8px}
+.form-alta button{align-self:start}
+.etiqueta-form{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+               color:var(--tinta-apagada)}
+.pagina-ser{display:flex;gap:8px;align-items:center;margin-top:8px}
+
+/* --------------------------------------------------------------------------
+   Movimiento
+     · Entrada: `entrar` (translateY + opacity, ease-out, ≤0.3s) con stagger.
+     · Estado: lineal, según el playbook.
+     · Barrido: lineal e infinito SOLO en la página activa y en el trabajo
+       indeterminado (una barra que avanza sola mentiría sobre el avance real).
+   -------------------------------------------------------------------------- */
+@keyframes entrar{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes barrido{from{transform:translateY(-100%)}to{transform:translateY(100%)}}
+@keyframes latido{from{opacity:.45}to{opacity:1}}
+
+@media (prefers-reduced-motion: no-preference){
+  /* Barrido de la página activa (lineal, como el pulso del portal). */
+  .hoja.activa .escaner::before{animation:barrido 1.6s linear infinite}
+  /* Latido del chip mientras el worker trabaja: es un estado, no adorno. */
+  .chip.latir{animation:latido 1.2s linear infinite alternate}
+  /* NOTA: las tablas NO se animan al re-renderizarse (cola y entrada se
+     reconstruyen cada pocos segundos y la animación parpadearía). El log sí
+     anima cada línea nueva porque solo se añade. */
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;
+                        transition-duration:.01ms !important}
+}
+
+/* Embebido en el portal (iframe): el portal ya rotula la herramienta, así que
+   se oculta el título del panel para no repetirlo y se compacta la barra. */
+body.embebido h1{display:none}
+body.embebido .barra-sup{padding:8px 10px}
+body.embebido .app{padding:10px 12px 24px}
+
+/* --------------------------------------------------------------------------
+   Pestañas (skill `tab`): ARIA, teclado, hash en la URL, indicador deslizante.
+   El panel dejó de ser un scroll único de 5 secciones: ahora son 4 pestañas
+   con la barra de estado siempre visible arriba.
+   -------------------------------------------------------------------------- */
+.tabs{position:sticky;top:0;z-index:6;display:flex;gap:0;margin:0 0 14px;
+      background-color:var(--fondo);border-bottom:1px solid var(--linea);
+      overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{height:0}
+.tab{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;min-height:42px;
+     background:none;border:none;border-radius:0;border-bottom:2px solid transparent;
+     color:var(--tinta-apagada);padding:9px 14px;white-space:nowrap;
+     font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+     transition:color var(--t-micro) var(--ease), border-color var(--t-micro) var(--ease)}
+.tab:hover:not([aria-selected="true"]){background:none;border-color:transparent;color:var(--tinta)}
+.tab[aria-selected="true"]{color:var(--acento);border-color:transparent}
+.tab-badge{font-family:var(--font-mono);font-size:10px;letter-spacing:.04em;
+           padding:1px 6px;border:1px solid var(--linea);color:var(--tinta-apagada)}
+.tab-badge.activo{border-color:var(--acento);color:var(--acento)}
+.tab-badge.cero{opacity:.45}
+.indicador{position:absolute;left:0;bottom:-1px;width:0;height:2px;background-color:var(--acento);
+           transform:translateX(0);pointer-events:none;
+           transition:transform .25s var(--ease), width .25s var(--ease)}
+.vistas{position:relative}
+[role="tabpanel"]{display:grid;gap:14px;grid-template-columns:1fr}
+[role="tabpanel"][hidden]{display:none}
+[role="tabpanel"]:not([hidden]){animation:entrar .22s ease-out backwards}
+/* Todas las tarjetas ocupan el ancho completo y se apilan en una columna.
+   NOTA (18/oct/2026): hubo aquí una regla de 2 columnas que nunca se aplicó
+   (`#vista-cola > .caja:first-of-type`) porque todas las tarjetas son `.caja`
+   y ya llevan `grid-column:1/-1`; se retiró para no dejar CSS muerto. La tabla
+   de la cola necesita ancho completo, así que una columna es lo correcto. */
+/* Tabla de datos del sistema: etiqueta + valor, separadores de 1px. */
+.sistema{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+         gap:1px;background-color:var(--linea);border:1px solid var(--linea)}
+.sistema > div{display:flex;justify-content:space-between;gap:10px;padding:7px 9px;
+               background-color:var(--panel)}
+.sistema .et{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;
+             text-transform:uppercase;color:var(--tinta-apagada)}
+.sistema span:last-child{font-family:var(--font-mono);font-size:11.5px;color:var(--tinta);
+                         text-align:right;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="barra-sup">
+    <h1><span class="marca">▚</span>Panel · Separador de PDFs</h1>
+    <div class="chips">
+      <span class="chip" id="c-conexion">conectando…</span>
+      <span class="chip" data-avanzado="1" id="c-modo">modo —</span>
+      <span class="chip" data-avanzado="1" id="c-worker">worker: —</span>
+      <span class="chip" data-avanzado="1" id="c-entrada">entrada —</span>
+      <span class="chip" data-avanzado="1" id="c-disco">disco —</span>
+      <button class="mini" id="btn-vista" onclick="alternarVista()"
+        title="la vista simple oculta lo técnico; la completa muestra cola, log, métricas, sistema y seriales"
+        aria-pressed="false">vista completa</button>
+    </div>
+  </div>
+
+  <!-- Ayuda de una línea: qué hace el panel y qué se espera del usuario. -->
+  <p class="ayuda" id="ayuda">
+    <b>1</b> sube tus PDFs a <b>Documentos</b> · <b>2</b> pulsa <b>Procesar</b> ·
+    <b>3</b> al terminar descárgalos en <b>Resultados</b>.
+  </p>
+
+  <nav class="tabs" role="tablist" aria-label="Secciones del panel">
+    <button class="tab" role="tab" id="tab-entrada" aria-controls="vista-entrada" aria-selected="true" tabindex="0">01 · Documentos <span class="tab-badge cero" id="b-entrada">0</span></button>
+    <button class="tab" role="tab" id="tab-cola" aria-controls="vista-cola" aria-selected="false" tabindex="-1">02 · Progreso <span class="tab-badge cero" id="b-cola">0</span></button>
+    <button class="tab" role="tab" id="tab-resultados" aria-controls="vista-resultados" aria-selected="false" tabindex="-1">03 · Resultados <span class="tab-badge cero" id="b-resultados">0</span></button>
+    <button class="tab" role="tab" id="tab-sistema" aria-controls="vista-sistema" aria-selected="false" tabindex="-1" data-solo-completa="1">04 · Sistema</button>
+    <button class="tab" role="tab" id="tab-seriales" aria-controls="vista-seriales" aria-selected="false" tabindex="-1" data-solo-completa="1">05 · Seriales <span class="tab-badge cero" id="b-seriales">0</span></button>
+    <span class="indicador" id="indicador" aria-hidden="true"></span>
+  </nav>
+  <div class="vistas">
+    <section role="tabpanel" id="vista-entrada" aria-labelledby="tab-entrada" tabindex="0">
+    <!-- 1 · ENTRADA LOCAL -->
+    <div class="caja ancha">
+      <h2>Archivos por procesar</h2>
+      <div class="fila-botones">
+        <button data-avanzado="1" onclick="cargarEntrada()">Refrescar</button>
+        <button class="primario" id="btn-procesar-sel" data-avanzado="1" onclick="procesarSeleccion()">Procesar seleccionados</button>
+        <button class="primario" id="btn-procesar-todo" onclick="dispararTodo()">Disparar con toda la entrada</button>
+        <label class="dry"><input type="checkbox" id="chk-dry" checked>
+          <span id="dry-txt">simulación (<code>--dry</code>: no mueve a procesados ni envía correo)</span></label>
+        <span class="num" id="entrada-info"></span>
+      </div>
+      <div class="zonasub" id="zona-subida">
+        Arrastra PDFs aquí (van a <code>entrada_local/</code>) · <button class="mini" onclick="document.getElementById('file').click()">elegir archivos</button>
+        <input type="file" id="file" multiple accept="application/pdf" style="display:none">
+      </div>
+      <div class="filtros" data-avanzado="1">
+        <input type="search" id="f-entrada-q" placeholder="filtrar archivos…" oninput="pintarEntrada()">
+        <select id="f-entrada-estado" onchange="pintarEntrada()">
+          <option value="">todos</option>
+          <option value="nuevo">sin encolar</option>
+          <option value="encolado">ya en cola</option>
+          <option value="no_pdf">no es PDF</option>
+        </select>
+      </div>
+      <table id="t-entrada">
+        <thead><tr><th style="width:26px" data-avanzado="1"><input type="checkbox" id="chk-todos" onchange="toggleTodos(this)"></th>
+          <th>Archivo</th><th>Peso</th><th data-avanzado="1">Páginas</th><th data-avanzado="1">Modificado</th><th>Estado</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="vac" id="entrada-vac">Sin datos todavía.</div>
+      <details id="det-procesados" style="margin-top:8px" data-avanzado="1">
+        <summary class="num" style="cursor:pointer">procesados/ (<span id="proc-n">0</span> archivos)</summary>
+        <div id="lista-procesados" style="margin-top:6px"></div>
+        <button class="mini" style="margin-top:6px" onclick="cargarProcesados()">Refrescar procesados</button>
+      </details>
+    </div>
+
+    </section>
+    <section role="tabpanel" id="vista-cola" aria-labelledby="tab-cola" tabindex="0" hidden>
+    <!-- 3 · PROGRESO -->
+    <div class="caja ancha" id="caja-progreso">
+      <h2>Progreso en vivo</h2>
+      <div class="num" id="prog-titulo">Sin job en curso.</div>
+
+      <div class="visor" id="visor">
+        <div class="hoja-viva">
+          <div class="lienzo" id="lienzo">
+            <img id="mini-img" alt="Miniatura de la página en proceso">
+            <span class="escaner" aria-hidden="true"></span>
+            <span class="franja" id="franja" aria-hidden="true" hidden></span>
+            <span class="sin-mini" id="mini-vacio">sin página aún</span>
+          </div>
+        </div>
+        <div class="bajo-hoja"><button class="mini" id="btn-max" onclick="abrirVisor()"
+          title="Ver la hoja en grande, con las cajas del OCR y el historial de workers">maximizar</button></div>
+        <div class="lectura" data-avanzado="1">
+          <span class="et">lo que está leyendo el OCR <span id="v-ocr-n">0</span> hoja(s)
+            <span class="parcial" id="v-parcial" hidden>parcial · solo SN</span></span>
+          <div class="texto-ocr" id="v-lectura">esperando la primera hoja…</div>
+        </div>
+        <div class="datos-vivos" data-avanzado="1">
+          <div><span class="et">documento</span><span id="v-pdf">—</span></div>
+          <div><span class="et">página</span><span id="v-pag">—</span></div>
+          <div><span class="et">serial</span><span id="v-sn">—</span></div>
+          <div><span class="et">sede</span><span id="v-sede">—</span></div>
+          <div><span class="et">marca</span><span id="v-marca">—</span></div>
+          <div><span class="et">estado</span><span id="v-estado">—</span></div>
+        </div>
+      </div>
+      <div class="paginas" id="paginas"></div>
+      <div class="barrafila" data-avanzado="1"><span class="num" style="width:84px">documento</span>
+        <div class="barra"><div class="relleno" id="b-doc"></div></div><span class="num" id="b-doc-t">0%</span></div>
+      <div class="barrafila"><span class="num" style="width:84px">job completo</span>
+        <div class="barra"><div class="relleno" id="b-job"></div></div><span class="num" id="b-job-t">0%</span></div>
+      <div class="metricas" data-avanzado="1">
+        <div class="metrica"><div class="k">página</div><div class="v" id="m-pag">—</div></div>
+        <div class="metrica"><div class="k">velocidad</div><div class="v" id="m-vel">—</div></div>
+        <div class="metrica"><div class="k">ETA documento</div><div class="v" id="m-eta-doc">—</div></div>
+        <div class="metrica"><div class="k">ETA global</div><div class="v" id="m-eta-job">—</div></div>
+        <div class="metrica"><div class="k">páginas hechas</div><div class="v" id="m-hechas">—</div></div>
+        <div class="metrica"><div class="k">serial/sede actual</div><div class="v" id="m-sn" style="font-size:13px">—</div></div>
+      </div>
+      <div class="workers" id="workers" data-avanzado="1"></div>
+      <div class="lista-chips" id="chips-sede" data-avanzado="1"></div>
+      <div class="lista-chips" id="chips-serial" data-avanzado="1"></div>
+
+      <!-- Cierre de la corrida: estado, duración, contadores y dónde quedó todo. -->
+      <div class="fin" id="fin" hidden>
+        <div class="fin-cab">
+          <b id="fin-estado">TERMINADO</b>
+          <span class="num" id="fin-cuando"></span>
+        </div>
+        <div class="fin-datos" id="fin-datos"></div>
+        <div class="fin-ruta"><span class="et">resultados en</span>
+          <code id="fin-ruta">—</code></div>
+        <div class="fila-botones" style="margin:8px 0 0">
+          <button onclick="irAResultados()">ver resultados</button>
+          <button class="mini" onclick="zipUltima()">descargar ZIP de la corrida</button>
+          <button class="mini" onclick="abrirVisor()">ver última hoja en grande</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 · COLA -->
+    <div class="caja ancha" data-avanzado="1">
+      <h2>Cola de trabajo</h2>
+      <div class="fila-botones">
+        <button onclick="pausarTodo()">Pausar todo</button>
+        <button onclick="reanudarTodo()">Reanudar todo</button>
+        <span class="num" id="cola-info">—</span>
+      </div>
+      <div class="filtros">
+        <input type="search" id="f-cola-q" placeholder="buscar en la cola…" oninput="pintarCola()">
+        <select id="f-cola-estado" onchange="pintarCola()">
+          <option value="">todos los estados</option>
+          <option value="pendiente">pendiente</option>
+          <option value="en_proceso">en proceso</option>
+          <option value="ok">ok</option>
+          <option value="error">error</option>
+          <option value="pausado">pausado</option>
+          <option value="cancelado">cancelado</option>
+        </select>
+      </div>
+      <table id="t-cola">
+        <thead><tr><th>#</th><th>Estado</th><th>Archivo</th><th>Progreso</th><th>Vel.</th><th>ETA</th><th>Acciones</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="vac" id="cola-vac">Cola vacía.</div>
+    </div>
+
+    <!-- 5 · LOG -->
+    <div class="caja ancha" data-avanzado="1">
+      <h2>Log en vivo</h2>
+      <div class="fila-botones"><button class="mini" onclick="limpiarLog()">limpiar vista</button>
+        <span class="num" id="log-info"></span></div>
+      <div class="log" id="log"></div>
+    </div>
+    </section>
+    <section role="tabpanel" id="vista-resultados" aria-labelledby="tab-resultados" tabindex="0" hidden>
+    <!-- 4 · RESULTADOS -->
+    <div class="caja ancha">
+      <h2>Resultados (descargar desde aquí)</h2>
+      <div class="fila-botones">
+        <button onclick="cargarResultados()">Refrescar resultados</button>
+        <button class="mini" data-avanzado="1" onclick="limpiar('corridas', 2)">Borrar corridas viejas (conservar 2)</button>
+        <button class="mini peligro" data-avanzado="1" onclick="limpiar('todas')">Borrar todas las corridas</button>
+        <span class="num" id="espacio-info">—</span>
+      </div>
+      <div class="filtros">
+        <select id="f-res-corrida" data-avanzado="1" onchange="pintarResultados()"><option value="">todas las corridas</option></select>
+        <input type="search" id="f-res-q" placeholder="buscar por sede o archivo…" oninput="pintarResultados()">
+        <input type="search" id="f-res-serial" data-avanzado="1" placeholder="serial exacto (p. ej. CNB1NDR0XQ)" oninput="pintarResultados()">
+      </div>
+      <div class="barra" style="height:12px" data-avanzado="1"><div class="relleno" id="b-disco"></div></div>
+      <div class="num" id="espacio-detalle" data-avanzado="1" style="font-size:11.5px;margin-top:5px"></div>
+      <div id="resultados"></div>
+      <div class="vac" id="resultados-vac">Sin corridas todavía.</div>
+    </div>
+
+    </section>
+    <section role="tabpanel" id="vista-seriales" aria-labelledby="tab-seriales" tabindex="0" hidden>
+      <div class="caja ancha">
+        <h2>Inventario de seriales</h2>
+        <div class="filtros">
+          <input type="search" id="f-ser-q" placeholder="serial, marca, modelo o sede…" oninput="cargarSeriales(0)">
+          <select id="f-ser-sede" onchange="cargarSeriales(0)"><option value="">todas las sedes</option></select>
+          <select id="f-ser-marca" onchange="cargarSeriales(0)"><option value="">todas las marcas</option></select>
+          <select id="f-ser-estatus" onchange="cargarSeriales(0)"><option value="">cualquier estatus</option></select>
+          <button class="mini" onclick="cargarSeriales(0)">Aplicar</button>
+          <button class="mini" onclick="limpiarFiltrosSeriales()">Limpiar</button>
+          <span class="num" id="ser-info">—</span>
+        </div>
+        <table id="t-seriales">
+          <thead><tr><th>Serial</th><th>Marca</th><th>Modelo</th><th>Sede</th><th>Zona</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="vac" id="ser-vac">Sin seriales todavía: importa los Excel o da de alta uno.</div>
+        <div class="pagina-ser">
+          <button class="mini" onclick="paginaSeriales(-1)">← anteriores</button>
+          <button class="mini" onclick="paginaSeriales(1)">siguientes →</button>
+          <span class="num" id="ser-rango"></span>
+        </div>
+      </div>
+
+      <div class="caja ancha">
+        <h2>Alta / edición de un serial</h2>
+        <div class="form-alta">
+          <input id="n-sn" placeholder="SERIAL (obligatorio)">
+          <input id="n-marca" placeholder="marca">
+          <input id="n-modelo" placeholder="modelo">
+          <input id="n-sede" placeholder="sede">
+          <input id="n-zona" placeholder="zona">
+          <input id="n-estatus" placeholder="estatus">
+          <input id="n-domicilio" placeholder="domicilio">
+          <input id="n-contador" placeholder="contador inicial">
+          <button class="primario" onclick="guardarSerial()">Guardar serial</button>
+          <button class="mini" onclick="limpiarFormSerial()">Limpiar</button>
+        </div>
+        <div class="fila-botones">
+          <button class="mini" onclick="importarInventario()">Importar desde los Excel locales</button>
+          <button class="mini" onclick="exportarInventario()">Exportar al pipeline</button>
+          <span class="num" id="inventario-info">—</span>
+        </div>
+        <div class="etiqueta-form">
+          El pipeline valida los seriales contra <code>inventarios_local/inventario_panel.xlsx</code>,
+          que se regenera con cada alta, edición o baja. Los Excel originales se ignoran mientras exista
+          ese archivo (así tus cambios son los que mandan).
+        </div>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="vista-sistema" aria-labelledby="tab-sistema" tabindex="0" hidden>
+    <!-- SISTEMA -->
+    <div class="caja ancha">
+      <h2>Sistema</h2>
+      <div class="sistema">
+        <div><span class="et">modo</span><span id="s-modo">—</span></div>
+        <div><span class="et">simulación por defecto</span><span id="s-dry">—</span></div>
+        <div><span class="et">correo</span><span id="s-correo">—</span></div>
+        <div><span class="et">worker</span><span id="s-worker">—</span></div>
+        <div><span class="et">entrada</span><span id="s-entrada">—</span></div>
+        <div><span class="et">inventarios</span><span id="s-inventarios">—</span></div>
+        <div><span class="et">resultados</span><span id="s-salida">—</span></div>
+        <div><span class="et">rclone</span><span id="s-rclone">—</span></div>
+        <div><span class="et">puerto</span><span id="s-puerto">—</span></div>
+        <div><span class="et">base de datos</span><span id="s-db">—</span></div>
+        <div><span class="et">última corrida</span><span id="s-ultimo">—</span></div>
+        <div><span class="et">seriales en el panel</span><span id="s-seriales">—</span></div>
+        <div><span class="et">lectura secuencial</span><span>
+          <label class="dry" style="display:inline-flex;gap:6px">
+            <input type="checkbox" id="chk-secuencial" onchange="guardarAjustes()"> por franjas
+          </label></span></div>
+        <div><span class="et">cortar al hallar el SN</span><span>
+          <label class="dry" style="display:inline-flex;gap:6px">
+            <input type="checkbox" id="chk-solo-sn" onchange="guardarAjustes()"> solo modelos SN
+          </label></span></div>
+      </div>
+    </div>
+    </section>
+  </div>
+</div>
+
+<!-- ==========================================================================
+     VISOR MAXIMIZADO (hoja a hoja)
+     Se abre desde el visor con "maximizar". Aquí SÍ se ve la animación de las
+     cajas del OCR, el texto completo de la hoja, sus datos y el historial de
+     los workers. En el panel principal queda solo el texto (como antes).
+     ========================================================================== -->
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="m-titulo" hidden>
+  <div class="modal-fondo" onclick="cerrarVisor()"></div>
+  <div class="modal-caja">
+    <header class="modal-cab">
+      <h2 id="m-titulo">hoja —</h2>
+      <span class="num" id="m-sub">—</span>
+      <span class="chip" id="m-seguir" onclick="alternarSeguir()" role="button" tabindex="0"
+            title="seguir la hoja que se está leyendo, o quedarse en esta">seguir en vivo</span>
+      <button class="mini" onclick="cerrarVisor()" aria-label="cerrar el visor">cerrar · esc</button>
+    </header>
+    <div class="modal-cuerpo">
+      <div class="modal-hoja">
+        <button class="mini nav" id="m-prev" onclick="hojaAnterior()" aria-label="hoja anterior">←</button>
+        <div class="lienzo-modal" id="m-lienzo">
+          <img id="m-img" alt="Hoja del documento">
+          <span class="cajas" id="m-cajas" aria-hidden="true"></span>
+          <span class="sin-mini" id="m-vacio">sin hoja cargada</span>
+        </div>
+        <button class="mini nav" id="m-next" onclick="hojaSiguiente()" aria-label="hoja siguiente">→</button>
+      </div>
+      <div class="modal-texto">
+        <span class="et">texto extraído de esta hoja</span>
+        <div class="texto-ocr grande" id="m-lectura">—</div>
+        <span class="et" style="margin-top:10px">leyenda</span>
+        <div class="leyenda-bloque">
+          <span><i class="sw"></i> dato relevante</span>
+          <span><i class="sw s2"></i> texto detectado</span>
+          <span class="mini">las cajas se dibujan en orden de lectura</span>
+        </div>
+      </div>
+      <aside class="modal-datos">
+        <span class="et">detalles de la hoja</span>
+        <div class="sistema" id="m-detalles"></div>
+        <span class="et" style="margin-top:12px">historial por worker <span class="mini" id="m-nworkers"></span></span>
+        <div id="m-workers" class="trabajadores"></div>
+        <span class="et" style="margin-top:10px">últimas hojas leídas</span>
+        <div id="m-recientes" class="recientes"></div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const S = {
+  entradas: [], cola: [], worker: {}, actual: null, ultimoJob: null, resumen: {},
+  paginas: [], docActual: null, pagTotalDoc: 0, ultimoEventoId: 0, es: null,
+  ocr: {}, ocrTotal: 0, ultimaOcr: null,
+  trab: {workers: [], recientes: []},
+  modal: false, mSeguir: true, mHoja: null,
+  modo: "local", espacio: {}, resultados: [], entradaRuta: "", seriales: { total: 0, limite: 100, offset: 0 },
+};
+/* Base de la API: si el panel se sirve detrás del portal de herramientas
+   (http://127.0.0.1:8080/panel/) las rutas viven en /api/panel/. */
+const API = (document.baseURI || "").includes("/panel/") ? "/api/panel" : "/api";
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t == null ? "" : t).replace(/[&<>"']/g,
+  (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const kb = (n) => n == null ? "—" : (n > 1048576 ? (n/1048576).toFixed(1)+" MB" : Math.max(1,Math.round(n/1024))+" KB");
+const mmss = (s) => {
+  if (s == null || isNaN(s)) return "—";
+  s = Math.max(0, Math.round(s));
+  const m = Math.floor(s/60), r = s%60;
+  return m ? `${m}m ${String(r).padStart(2,"0")}s` : `${r}s`;
+};
+const q = (o) => Object.entries(o).map(([k,v]) => k+"="+encodeURIComponent(v)).join("&");
+
+async function apiGet(url){ const r = await fetch(url, {cache:"no-store"}); return r.json(); }
+async function apiPost(url, cuerpo){
+  const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+                             body: JSON.stringify(cuerpo || {})});
+  return r.json();
+}
+async function accion(url, cuerpo){
+  try { const d = await apiPost(url, cuerpo); if (d && d.ok === false) alert(d.error || "error"); }
+  catch(e){ alert("Error: " + e); }
+  cargarEstado();
+}
+/* Atajos para los botones del HTML: usan la base correcta (API) para que
+   funcionen igual servidos solos (127.0.0.1:8791) o dentro del portal (/panel/). */
+function dispararTodo(){ return accion(API + "/disparar"); }
+function pausarTodo(){ return accion(API + "/pausar"); }
+function reanudarTodo(){ return accion(API + "/reanudar"); }
+
+/* ---------------- 1 · entrada local ---------------- */
+async function cargarEntrada(){
+  $("entrada-info").textContent = "cargando…";
+  try{
+    const d = await apiGet(API + "/entrada");
+    if (!d.ok){ $("entrada-info").textContent = "error: " + (d.error||""); return; }
+    S.entradas = d.archivos || [];
+    S.entradaRuta = d.remoto;
+    badge("b-entrada", S.entradas.length, false);
+    pintarEntrada();
+  }catch(e){ $("entrada-info").textContent = "error: " + e; }
+}
+
+/* Render de la entrada con filtros (texto + estado). */
+function pintarEntrada(){
+  const tb = $("t-entrada").querySelector("tbody");
+  tb.innerHTML = "";
+  const q1 = ($("f-entrada-q")?.value || "").toLowerCase().trim();
+  const est = $("f-entrada-estado")?.value || "";
+  const lista = S.entradas.filter((a) => {
+    if (q1 && !a.Name.toLowerCase().includes(q1)) return false;
+    if (est === "encolado" && !a.encolado) return false;
+    if (est === "nuevo" && (a.encolado || a.es_pdf === false)) return false;
+    if (est === "no_pdf" && a.es_pdf !== false) return false;
+    return true;
+  });
+  for (const a of lista){
+      const tr = document.createElement("tr");
+      tr.className = "nueva";
+      tr.innerHTML =
+        `<td data-avanzado="1"><input type="checkbox" class="chk-entrada" value="${esc(a.Name)}"></td>
+         <td>${esc(a.Name)}</td>
+         <td class="num">${kb(a.Size)}</td>
+         <td class="num" data-avanzado="1">${a.paginas == null ? "—" : a.paginas}</td>
+         <td class="num" data-avanzado="1">${esc(a.ModTime || "—")}</td>
+         <td>${a.encolado ? '<span class="estado-chip en_proceso">en cola</span>'
+                          : (a.es_pdf === false ? '<span class="estado-chip error">no es PDF</span>'
+                                                : '<span class="estado-chip pendiente">nuevo</span>')}</td>
+         <td>${a.es_pdf === false ? "" : `<button class="mini peligro" title="borrar del disco"
+                onclick="borrarEntrada('${esc(a.Name)}')">Borrar</button>`}</td>`;
+    tb.appendChild(tr);
+  }
+  $("entrada-vac").style.display = lista.length ? "none" : "block";
+  $("entrada-info").textContent = `${lista.length} de ${S.entradas.length} archivo(s)` +
+    (S.entradaRuta ? ` en ${S.entradaRuta}` : "");
+}
+function toggleTodos(chk){
+  document.querySelectorAll(".chk-entrada").forEach(c => c.checked = chk.checked);
+}
+function seleccionados(){
+  return [...document.querySelectorAll(".chk-entrada")].filter(c => c.checked).map(c => c.value);
+}
+async function procesarSeleccion(){
+  const nombres = seleccionados();
+  if (!nombres.length){ alert("Selecciona al menos un PDF (o usa 'Disparar con toda la entrada')."); return; }
+  const d = await apiPost(API + "/encolar", {nombres, iniciar:true, dry: $("chk-dry").checked});
+  if (d.ok === false) alert(d.error || "error");
+  cargarEntrada(); cargarEstado();
+}
+async function borrarEntrada(nombre){
+  if (!confirm(`¿Borrar "${nombre}" de entrada_local? Es permanente.`)) return;
+  const d = await apiPost(API + "/borrar", {nombre, que: "entrada"});
+  if (d.ok === false) alert(d.error || "error");
+  cargarEntrada(); cargarEspacio();
+}
+async function cargarProcesados(){
+  const cont = $("lista-procesados");
+  cont.innerHTML = '<div class="num">cargando…</div>';
+  try{
+    const d = await apiGet(API + "/procesados");
+    const archivos = d.archivos || [];
+    $("proc-n").textContent = `${archivos.length} · ${kb(d.bytes)}`;
+    cont.innerHTML = archivos.length ? "" : '<div class="num">todavía no hay archivos procesados.</div>';
+    for (const a of archivos){
+      const div = document.createElement("div");
+      div.className = "arch";
+      div.innerHTML = `<span>${esc(a.Name)}</span><span class="tam">${kb(a.Size)}</span>
+        <span class="tam">${esc(a.ModTime)}</span>
+        <button class="mini peligro" onclick="borrarProcesado('${esc(a.Name)}')">Borrar</button>`;
+      cont.appendChild(div);
+    }
+  }catch(e){ cont.innerHTML = '<div class="num">error: '+esc(e)+'</div>'; }
+}
+async function borrarProcesado(nombre){
+  if (!confirm(`¿Borrar "${nombre}" de procesados? Es permanente.`)) return;
+  const d = await apiPost(API + "/borrar", {nombre, que: "procesados"});
+  if (d.ok === false) alert(d.error || "error");
+  cargarProcesados(); cargarEspacio();
+}
+async function subirArchivos(files){
+  if (!files || !files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("archivos", f, f.name);
+  $("zona-subida").textContent = "SUBIENDO " + files.length + " archivo(s)…";
+  try{
+    const r = await fetch(API + "/subir?encolar=1", {method:"POST", body: fd});
+    const d = await r.json();
+    let msg = `${files.length} archivo(s): ${(d.subidos||[]).length} subidos, ${((d.errores||[]).length)} con error`;
+    if (d.errores && d.errores.length) msg += " — " + d.errores.map(e => e.nombre+": "+e.error).join(" | ");
+    if (d.encolados && d.encolados.length) msg += " (encolados: " + d.encolados.join(", ") + ")";
+    $("zona-subida").textContent = msg;
+    setTimeout(recargarTextoSubida, 7000);
+  }catch(e){ $("zona-subida").textContent = "error subiendo: " + e; }
+  cargarEntrada(); cargarEstado(); cargarEspacio();
+}
+function recargarTextoSubida(){
+  $("zona-subida").innerHTML = 'Arrastra PDFs aquí (van a <code>entrada_local/</code>) · ' +
+    '<button class="mini" onclick="document.getElementById(\'file\').click()">elegir archivos</button>' +
+    '<input type="file" id="file" multiple accept="application/pdf" style="display:none">';
+  conectarInputs();
+}
+function conectarInputs(){
+  const f = $("file");
+  if (f && !f.dataset.listo){ f.dataset.listo = "1"; f.addEventListener("change", e => subirArchivos(e.target.files)); }
+}
+["dragenter","dragover"].forEach(ev => $("zona-subida").addEventListener(ev, e => {
+  e.preventDefault(); $("zona-subida").classList.add("encima"); }));
+["dragleave","drop"].forEach(ev => $("zona-subida").addEventListener(ev, e => {
+  e.preventDefault(); $("zona-subida").classList.remove("encima"); }));
+$("zona-subida").addEventListener("drop", e => subirArchivos(e.dataTransfer.files));
+
+/* ---------------- 4 · resultados ---------------- */
+async function cargarResultados(){
+  try{
+    const d = await apiGet(API + "/resultados");
+    S.resultados = d.corridas || [];
+    const sel = $("f-res-corrida");
+    if (sel && sel.options.length <= 1){
+      for (const c of S.resultados) sel.add(new Option(c.corrida, c.corrida));
+    }
+    pintarResultados();
+  }catch(e){ console.warn(e); }
+}
+
+/* Render de resultados con filtros: corrida, texto (sede/archivo) y serial exacto. */
+function pintarResultados(){
+  const cont = $("resultados");
+  cont.innerHTML = "";
+  const fCorrida = $("f-res-corrida")?.value || "";
+  const fq = ($("f-res-q")?.value || "").toLowerCase().trim();
+  const fSer = ($("f-res-serial")?.value || "").toLowerCase().trim();
+  let pintadas = 0;
+  for (const c of S.resultados){
+      const det = document.createElement("details");
+      det.className = "corrida";
+      const sedes = c.sedes || [];
+      let inner = `<summary><b>${esc(c.corrida)}</b>
+        <span class="chip ok">${c.n_ok} OK</span>
+        <span class="chip aviso">${c.n_revisar} a revisar</span>
+        <span class="tam">${kb(c.bytes)}</span>
+        <span class="tam">${esc(c.ModTime)}</span>
+        <span style="margin-left:auto"></span>
+        <a class="mini" href="${API}/zip?${q({corrida:c.corrida})}" title="ZIP de toda la corrida">↓ ZIP corrida</a>
+        <button class="mini peligro" onclick="event.preventDefault();limpiar('corrida','${esc(c.corrida)}')">Borrar corrida</button>
+        </summary>`;
+      for (const s of sedes){
+        inner += `<div class="sede"><h4>${esc(s.sede)}
+          <span class="tam">${s.n_ok} OK · ${s.n_revisar} a revisar · ${kb(s.bytes)}</span>
+          <a class="mini" href="${API}/zip?${q({corrida:c.corrida, sede:s.sede})}">↓ ZIP sede</a></h4>`;
+        for (const carpeta of ["EQUIPOS_OK","A_REVISAR"]){
+          const archs = (s.carpetas || {})[carpeta] || [];
+          if (!archs.length) continue;
+          inner += `<div class="grupo">${carpeta} (${archs.length})</div>`;
+          for (const a of archs){
+            const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, carpeta, archivo:a.Name});
+            inner += `<div class="arch"><a href="${url}">↓ ${esc(a.Name)}</a><span class="tam">${kb(a.Size)}</span></div>`;
+          }
+        }
+        for (const e of (s.extras || [])){
+          const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, archivo:e});
+          inner += `<div class="arch"><a href="${url}">↓ ${esc(e)}</a></div>`;
+        }
+        inner += `</div>`;
+      }
+      if (fCorrida && c.corrida !== fCorrida) continue;
+      if (fq && !inner.toLowerCase().includes(fq) && !c.corrida.toLowerCase().includes(fq)) continue;
+      if (fSer && !inner.toLowerCase().includes(fSer)) continue;
+      det.innerHTML = inner;
+      cont.appendChild(det);
+      pintadas++;
+    }
+    $("resultados-vac").style.display = pintadas ? "none" : "block";
+    $("resultados-vac").textContent = S.resultados.length
+      ? "Ningún resultado coincide con el filtro."
+      : "Sin corridas todavía.";
+    badge("b-resultados", S.resultados.length, false);
+}
+
+/* ---------------- Seriales (inventario editable) ---------------- */
+S.seriales = { total: 0, limite: 100, offset: 0 };
+
+async function cargarSeriales(offset){
+  if (offset !== undefined) S.seriales.offset = Math.max(0, offset);
+  const par = {
+    q: $("f-ser-q")?.value || "", sede: $("f-ser-sede")?.value || "",
+    marca: $("f-ser-marca")?.value || "", estatus: $("f-ser-estatus")?.value || "",
+    limite: S.seriales.limite, offset: S.seriales.offset,
+  };
+  try{
+    const d = await apiGet(API + "/seriales?" + q(par));
+    if (d.ok === false){ $("ser-info").textContent = d.error || "error"; return; }
+    S.seriales.total = d.total;
+    const rellenar = (id, valores, texto) => {
+      const sel = $(id); if (!sel) return;
+      const actual = sel.value;
+      sel.innerHTML = `<option value="">${texto}</option>`;
+      for (const v of valores || []) sel.add(new Option(v, v));
+      sel.value = actual;
+    };
+    rellenar("f-ser-sede", d.filtros?.sedes, "todas las sedes");
+    rellenar("f-ser-marca", d.filtros?.marcas, "todas las marcas");
+    rellenar("f-ser-estatus", d.filtros?.estatus, "cualquier estatus");
+    const tb = $("t-seriales").querySelector("tbody");
+    tb.innerHTML = "";
+    for (const e of d.equipos){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="num">${esc(e.sn)}</td><td>${esc(e.marca)}</td><td>${esc(e.modelo)}</td>
+        <td>${esc(e.sede)}</td><td>${esc(e.zona)}</td><td>${esc(e.estatus)}</td>
+        <td class="tam">${esc((e.origen_hoja || "").slice(0, 22))}</td>
+        <td><button class="mini" onclick="editarSerial('${esc(e.sn)}')">Editar</button>
+            <button class="mini peligro" onclick="borrarSerial('${esc(e.sn)}')">Borrar</button></td>`;
+      tb.appendChild(tr);
+    }
+    $("ser-vac").style.display = d.equipos.length ? "none" : "block";
+    const desde = d.total ? S.seriales.offset + 1 : 0;
+    $("ser-rango").textContent = `${desde}–${S.seriales.offset + d.equipos.length} de ${d.total}`;
+    $("ser-info").textContent = `${d.total} de ${d.todos} serial(es)` +
+      (d.exportado ? ` · Excel del pipeline: ${d.exportado.mtime}` : " · Excel del pipeline: pendiente");
+    badge("b-seriales", d.todos, false);
+    $("inventario-info").textContent = `tabla equipos: ${d.todos} serial(es)`;
+  }catch(e){ $("ser-info").textContent = "error: " + e; }
+}
+
+function paginaSeriales(dir){
+  const nuevo = S.seriales.offset + dir * S.seriales.limite;
+  cargarSeriales(Math.max(0, nuevo));
+}
+function limpiarFiltrosSeriales(){
+  for (const id of ["f-ser-q", "f-ser-sede", "f-ser-marca", "f-ser-estatus"]){
+    const e = $(id); if (e) e.value = "";
+  }
+  cargarSeriales(0);
+}
+function limpiarFormSerial(){
+  for (const id of ["n-sn", "n-marca", "n-modelo", "n-sede", "n-zona", "n-estatus", "n-domicilio", "n-contador"]){
+    const e = $(id); if (e) { e.value = ""; e.disabled = false; }
+  }
+}
+function editarSerial(sn){
+  apiGet(API + "/seriales?" + q({q: sn, limite: 5})).then((d) => {
+    const e = (d.equipos || []).find((x) => x.sn === sn) || (d.equipos || [])[0];
+    if (!e) return;
+    $("n-sn").value = e.sn;
+    $("n-marca").value = e.marca || ""; $("n-modelo").value = e.modelo || "";
+    $("n-sede").value = e.sede || ""; $("n-zona").value = e.zona || "";
+    $("n-estatus").value = e.estatus || ""; $("n-domicilio").value = e.domicilio || "";
+    $("n-contador").value = e.contador_inicial || "";
+    mostrarPestana("seriales");
+    $("n-marca").focus();
+  });
+}
+async function guardarSerial(){
+  const sn = $("n-sn").value.trim();
+  if (!sn){ alert("El serial es obligatorio."); return; }
+  const cuerpo = {sn, marca: $("n-marca").value, modelo: $("n-modelo").value,
+    sede: $("n-sede").value, zona: $("n-zona").value, estatus: $("n-estatus").value,
+    domicilio: $("n-domicilio").value, contador_inicial: $("n-contador").value};
+  const d = await apiPost(API + "/seriales", cuerpo);
+  if (d.ok === false){ alert(d.error || "error"); return; }
+  limpiarFormSerial();
+  cargarSeriales(0);
+}
+async function borrarSerial(sn){
+  if (!confirm(`¿Borrar el serial ${sn} del inventario? El pipeline dejará de reconocerlo.`)) return;
+  const d = await apiPost(API + "/seriales/borrar", {sn});
+  if (d.ok === false){ alert(d.error || "error"); return; }
+  cargarSeriales(S.seriales.offset);
+}
+async function importarInventario(){
+  if (!confirm("Se cargarán los Excel locales en la tabla del panel (no borra nada; actualiza por serial). ¿Seguir?")) return;
+  $("inventario-info").textContent = "importando…";
+  const d = await apiPost(API + "/inventario/importar", {});
+  $("inventario-info").textContent = d.ok === false ? ("error: " + d.error) : `importado · ${d.total} serial(es)`;
+  cargarSeriales(0);
+}
+async function exportarInventario(){
+  const d = await apiPost(API + "/inventario/exportar", {});
+  $("inventario-info").textContent = d.ok === false
+    ? ("error: " + d.detalle) : `exportado a ${d.destino.split("/").pop()} (${d.filas} filas)`;
+  cargarSeriales(0);
+}
+async function limpiar(que, valor){
+  let cuerpo;
+  if (que === "corrida") cuerpo = {que:"corrida", corrida: valor};
+  else if (que === "todas"){
+    if (!confirm("¿Borrar TODAS las corridas de resultados? Es permanente.")) return;
+    cuerpo = {que:"todas", confirmar:true};
+  } else cuerpo = {que:"corridas", conservar: valor};
+  const d = await apiPost(API + "/limpiar", cuerpo);
+  if (d.ok === false){ alert(d.error || "error"); return; }
+  if (d.espacio) pintarEspacio(d.espacio);
+  cargarResultados();
+}
+
+/* ---------------- disco ---------------- */
+function pintarEspacio(e){
+  if (!e || !e.disco) return;
+  S.espacio = e;
+  const pct = e.disco.pct_usado || 0;
+  const r = $("b-disco");
+  r.style.transform = `scaleX(${Math.min(1, pct/100)})`;
+  r.className = "relleno " + (pct > 90 ? "aviso" : "ok");
+  $("espacio-info").textContent =
+    `separador: ${kb(e.total_separador)} · disco libre: ${kb(e.disco.libre)} (${pct}% usado)`;
+  const partes = Object.entries(e.carpetas || {})
+    .filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1])
+    .map(([k,v]) => `${k}: <b>${kb(v)}</b>`).join(" · ");
+  $("espacio-detalle").innerHTML = partes || "sin datos";
+  $("c-disco").textContent = "libre " + kb(e.disco.libre);
+  $("c-disco").className = "chip " + (pct > 90 ? "error" : (pct > 75 ? "aviso" : "ok"));
+}
+async function cargarEspacio(){ pintarEspacio(await apiGet(API + "/espacio")); }
+
+/* ---------------- 2 · cola / estado ---------------- */
+function pintarWorker(w){
+  w = w || {};
+  const c = $("c-worker");
+  const trabajando = w.estado === "trabajando";
+  c.textContent = "worker " + (w.vivo ? `vivo · ${w.pid}` : "detenido") + (w.estado ? ` · ${w.estado}` : "");
+  c.className = "chip " + (trabajando ? "ok latir" : (w.vivo ? "" : "aviso"));
+}
+function pintarModo(snap){
+  const c = $("c-modo");
+  const local = (snap.modo || "local") === "local";
+  c.textContent = local ? "local · sin drive" : "modo drive";
+  c.className = "chip " + (local ? "local" : "error");
+  if (snap.entrada) $("c-entrada").textContent = local ? "entrada_local" : snap.entrada.etiqueta;
+}
+function pintarCola(cola){
+  if (cola) S.cola = cola;
+  const tb = $("t-cola").querySelector("tbody");
+  tb.innerHTML = "";
+  const fq = ($("f-cola-q")?.value || "").toLowerCase().trim();
+  const fe = $("f-cola-estado")?.value || "";
+  const lista = S.cola.filter((j) =>
+    (!fe || j.estado === fe) && (!fq || j.nombre.toLowerCase().includes(fq)));
+  for (const j of lista){
+    const pct = j.pag_total ? Math.min(100, Math.round(j.pag_hechas / j.pag_total * 100)) : 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="num">${j.id}</td>
+       <td><span class="estado-chip ${esc(j.estado)}">${esc(j.estado)}</span>${j.dry ? ' <span class="estado-chip">dry</span>' : ""}</td>
+       <td>${esc(j.nombre)}<div class="num" style="font-size:11px">${esc(j.mensaje||"")}${j.error?" · "+esc(j.error):""}</div></td>
+       <td style="min-width:110px"><div class="barra"><div class="relleno ${j.estado==="ok"?"ok":(j.estado==="error"?"aviso":"")}"
+           style="transform:scaleX(${pct/100})"></div></div><span class="num" style="font-size:11px">${j.pag_hechas}/${j.pag_total||"?"} pág</span></td>
+       <td class="num">${j.vel_pag_min ? j.vel_pag_min.toFixed(1)+" pág/min" : "—"}</td>
+       <td class="num">${mmss(j.eta_s)}</td>
+       <td>${botonesJob(j)}</td>`;
+    tb.appendChild(tr);
+  }
+  $("cola-vac").style.display = lista.length ? "none" : "block";
+  const act = S.cola.filter(j => j.estado === "en_proceso").length;
+  const pen = S.cola.filter(j => j.estado === "pendiente").length;
+  $("cola-info").textContent = `${lista.length} de ${S.cola.length} job(s) · ${pen} pendiente(s) · ${act} en proceso`;
+  badge("b-cola", pen + act, act > 0);
+}
+function botonesJob(j){
+  const b = [];
+  if (j.estado === "pendiente" || j.estado === "en_proceso")
+    b.push(`<button class="mini" onclick="accion('${API}/pausar',{id:${j.id}})">Pausar</button>`);
+  if (j.estado === "pausado")
+    b.push(`<button class="mini" onclick="accion('${API}/reanudar',{id:${j.id}})">Reanudar</button>`);
+  if (j.estado === "error" || j.estado === "ok" || j.estado === "cancelado")
+    b.push(`<button class="mini" onclick="accion('${API}/reintentar',{id:${j.id}})">Reintentar</button>`);
+  if (j.estado !== "ok" && j.estado !== "cancelado")
+    b.push(`<button class="mini peligro" onclick="accion('${API}/cancelar',{id:${j.id}})">Borrar</button>`);
+  return b.join(" ");
+}
+async function cargarEstado(){
+  try{ aplicarSnapshot(await apiGet(API + "/estado")); }catch(e){ console.warn(e); }
+}
+function aplicarSnapshot(snap){
+  if (!snap) return;
+  S.modo = snap.modo || "local";
+  pintarModo(snap);
+  pintarWorker(snap.worker);
+  pintarCola(snap.cola);
+  S.actual = snap.actual || null;
+  S.ultimoJob = snap.ultimo_job || null;
+  S.resumen = snap.resumen || {};
+  if (snap.trabajadores) S.trab = {workers: snap.trabajadores.workers || [],
+                                   recientes: snap.trabajadores.recientes || [],
+                                   programados: snap.trabajadores.programados || 0};
+  if (snap.espacio) pintarEspacio(snap.espacio);
+  pintarSistema(snap);
+  if (snap.eventos && snap.eventos.length && !S.ultimoEventoId){
+    for (const ev of snap.eventos){ anotarEvento(ev, true); S.ultimoEventoId = Math.max(S.ultimoEventoId, ev.id); }
+  }
+  pintarProgreso();
+}
+/* Ficha de sistema: configuración efectiva del panel (antes estaba repartida). */
+function pintarSistema(snap){
+  const set = (id, v) => { const e = $(id); if (e) e.textContent = (v === null || v === undefined || v === "") ? "—" : v; };
+  const local = (snap.modo || "local") === "local";
+  set("s-modo", local ? "local (sin rclone)" : "drive");
+  set("s-dry", snap.dry_default ? "sí (--dry)" : "no (real)");
+  set("s-correo", snap.correo_activo ? "activo" : "silenciado (--sin-correo)");
+  set("s-worker", snap.worker ? (snap.worker.vivo ? `vivo · pid ${snap.worker.pid} · ${snap.worker.estado}` : "detenido") : "—");
+  set("s-entrada", snap.entrada ? snap.entrada.ruta : "—");
+  set("s-inventarios", (snap.inventarios && snap.inventarios.length) ? snap.inventarios.map(i => i.Name).join(", ") : "—");
+  set("s-salida", (snap.db || "").replace(/panel\.db$/, "") + "auto/salida/");
+  set("s-rclone", local ? "no se usa (bloqueado)" : (snap.rclone_bin || "—"));
+  set("s-puerto", snap.puerto || "—");
+  set("s-db", snap.db || "—");
+  const j = snap.actual || snap.ultimo_job;
+  set("s-ultimo", j ? `#${j.id} ${j.nombre} · ${j.estado} · ${j.pag_hechas}/${j.pag_total || "?"} pág.` : "—");
+  set("s-seriales", snap.seriales ? `${snap.seriales.total} en la tabla del panel` : "—");
+  if (snap.ajustes){
+    const s1 = $("chk-secuencial"), s2 = $("chk-solo-sn");
+    if (s1) s1.checked = !!snap.ajustes.ocr_secuencial;
+    if (s2) s2.checked = !!snap.ajustes.ocr_solo_sn;
+  }
+}
+
+/* ---------------- Visor "hoja en vivo" (miniatura + escaneo) ----------------
+   Pide al panel el PNG de la página que se está leyendo (PyMuPDF en el servidor)
+   y lo muestra con un barrido de escaneo y los datos detectados al lado. */
+function mostrarHoja(pdf, pag, datos){
+  const img = $("mini-img"), vacio = $("mini-vacio");
+  if (!pdf || !pag) return;
+  const clave = pdf + "|" + pag;
+  if (img.dataset.clave !== clave){
+    img.dataset.clave = clave;
+    img.classList.remove("cargada");
+    vacio.style.display = "block";
+    vacio.textContent = "cargando…";
+    img.onload = () => {
+      img.classList.add("cargada"); vacio.style.display = "none";
+    };
+    img.onerror = () => {
+      img.classList.remove("cargada");
+      vacio.style.display = "block";
+      vacio.textContent = "sin miniatura (el PDF ya no está en la entrada)";
+    };
+    img.src = API + "/miniatura?" + q({pdf, pag, ancho: 320});
+  }
+  const set = (id, v) => { const e = $(id); if (e) e.textContent = (v === null || v === undefined || v === "") ? "—" : v; };
+  set("v-pdf", pdf); set("v-pag", pag + (datos && datos.pag_total ? "/" + datos.pag_total : ""));
+  set("v-sn", datos && datos.sn); set("v-sede", datos && datos.sede);
+  set("v-marca", datos && datos.marca); set("v-estado", datos && datos.estado);
+}
+
+/* Dibuja sobre la miniatura la franja horizontal que se está leyendo. */
+function pintarFranja(ev){
+  const fr = $("franja");
+  if (!fr || !ev) return;
+  const y0 = Number(ev.y0 || 0), y1 = Number(ev.y1 || 0);
+  if (!(y1 > y0)) { fr.hidden = true; return; }
+  fr.hidden = false;
+  fr.style.top = (y0 * 100).toFixed(2) + "%";
+  fr.style.height = ((y1 - y0) * 100).toFixed(2) + "%";
+}
+
+/* ---------------- Cajas que detecta el OCR (animación sobre la hoja) --------
+   El pipeline publica, por hoja, el polígono de cada renglón leído (`cajas`).
+   Aquí solo se dibujan: recuadros que aparecen en orden de lectura y, en los
+   renglones con dato relevante, recuadro ámbar + etiqueta (serial/contador/
+   modelo/fecha). Nada de esto influye en la clasificación: es la ventana al OCR. */
+let tokenCajas = 0;
+
+function cajasDe(datos){
+  if (!datos || !datos.cajas) return [];
+  if (Array.isArray(datos.cajas)) return datos.cajas;
+  try { return JSON.parse(datos.cajas) || []; } catch(_) { return []; }
+}
+
+function prefiereMenosMovimiento(){
+  try { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
+  catch(_) { return false; }
+}
+
+/* Dibuja las cajas del OCR apiladas en orden de lectura dentro de una capa.
+   Se usa SOLO en el visor maximizado: el panel principal muestra el texto. */
+function pintarCajas(lista, capaId){
+  const capa = $(capaId || "m-cajas");
+  if (!capa) return;
+  const tok = ++tokenCajas;
+  capa.innerHTML = "";
+  if (!Array.isArray(lista) || !lista.length) return;
+  const reducido = prefiereMenosMovimiento();
+  const n = Math.min(lista.length, 90);
+  /* Ritmo: la hoja entera entra en ~1.9 s (el OCR real tarda más que eso). */
+  const paso = reducido ? 0 : Math.min(55, Math.round(1900 / n));
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++){
+    if (tok !== tokenCajas) return;
+    const c = lista[i] || {};
+    const x = Number(c.x), y = Number(c.y), w = Number(c.w), h = Number(c.h);
+    if (!(w > 0) || !(h > 0)) continue;
+    const d = document.createElement("span");
+    d.className = "ocr-caja" + (c.r ? " rel" : "");
+    if (c.r) d.dataset.r = c.r;
+    d.style.left = (x * 100).toFixed(2) + "%";
+    d.style.top = (y * 100).toFixed(2) + "%";
+    d.style.width = (w * 100).toFixed(2) + "%";
+    d.style.height = (h * 100).toFixed(2) + "%";
+    d.style.setProperty("--d", (i * paso) + "ms");
+    frag.appendChild(d);
+  }
+  capa.appendChild(frag);
+}
+
+/* ==========================================================================
+   VISOR MAXIMIZADO: hoja a hoja en grande
+   Muestra la hoja con las cajas animadas, el texto completo, los datos de esa
+   hoja y el historial de los workers. Se puede navegar y "seguir en vivo".
+   ========================================================================== */
+async function abrirVisor(pdf, pag){
+  const doc = pdf || S.docActual;
+  const ult = S.ultimaOcr && S.ultimaOcr.pdf === doc ? S.ultimaOcr : null;
+  const p = pag || (ult && ult.pag) || (S.ultima && S.ultima.pag) || 1;
+  if (!doc){
+    $("m-titulo").textContent = "sin documento todavía";
+    $("m-sub").textContent = "espera a que empiece un job";
+    $("modal").hidden = false; S.modal = true;
+    pintarTrabajadores(); pintarRecientes();
+    return false;
+  }
+  S.mSeguir = !!S.actual && !pag;
+  const m = $("modal");
+  m.hidden = false; S.modal = true;
+  document.body.classList.add("con-modal");
+  marcarseguir();
+  await mostrarHojaModal(doc, p);
+  try { $("m-prev").focus(); } catch(_) {}
+  return true;
+}
+
+function cerrarVisor(){
+  const m = $("modal");
+  if (!m || m.hidden) return;
+  m.hidden = true; S.modal = false;
+  document.body.classList.remove("con-modal");
+  tokenCajas++;
+  const capa = $("m-cajas"); if (capa) capa.innerHTML = "";
+  try { $("btn-max") && $("btn-max").focus(); } catch(_) {}
+}
+
+function alternarSeguir(){
+  S.mSeguir = !S.mSeguir;
+  marcarseguir();
+  if (S.mSeguir && S.ultimaOcr) mostrarHojaModal(S.ultimaOcr.pdf || S.docActual, S.ultimaOcr.pag);
+}
+function marcarseguir(){
+  const c = $("m-seguir");
+  if (!c) return;
+  c.textContent = S.mSeguir ? "seguir en vivo: sí" : "seguir en vivo: no";
+  c.classList.toggle("apagado", !S.mSeguir);
+  c.setAttribute("aria-pressed", S.mSeguir ? "true" : "false");
+}
+
+/* Carga una hoja en el visor: miniatura grande, texto, cajas y detalles.
+   Si la hoja no está en memoria (panel recién abierto) se pide a /api/hoja. */
+async function mostrarHojaModal(pdf, pag){
+  if (!pdf || !pag) return;
+  const total = Math.max(S.pagTotalDoc || 0, S.ocrTotal || 0, pag);
+  const enMem = (S.ocr && S.ocr[pag]) || null;
+  const mismaHoja = S.mHoja && S.mHoja.pdf === pdf && S.mHoja.pag === pag;
+  $("m-titulo").textContent = pdf;
+  $("m-sub").textContent = `hoja ${pag}${total ? " / " + total : ""}` +
+    (enMem && enMem.worker ? ` · worker ${enMem.worker}` : "");
+  $("m-prev").disabled = pag <= 1;
+  $("m-next").disabled = total ? pag >= total : true;
+
+  /* 1) la hoja en grande (misma miniatura del servidor, a 900 px de ancho) */
+  const img = $("m-img"), vacio = $("m-vacio");
+  const clave = pdf + "|" + pag;
+  if (img.dataset.clave !== clave){
+    img.dataset.clave = clave;
+    img.style.visibility = "hidden";
+    vacio.style.display = "block"; vacio.textContent = "cargando hoja…";
+    const capa = $("m-cajas"); if (capa) capa.innerHTML = "";
+    img.onload = () => {
+      img.style.visibility = "visible"; vacio.style.display = "none";
+      if (S.mHoja && S.mHoja.pdf === pdf && S.mHoja.pag === pag) pintarCajas(S.mHoja.cajas, "m-cajas");
+    };
+    img.onerror = () => {
+      img.style.visibility = "hidden"; vacio.style.display = "block";
+      vacio.textContent = "sin miniatura (el PDF ya no está en la entrada)";
+    };
+    img.src = API + "/miniatura?" + q({pdf, pag, ancho: 900});
+  }
+
+  /* 2) datos de la hoja: de memoria si están, si no del histórico */
+  let hoja = enMem ? {pdf, pag, texto: enMem.texto, sn: enMem.sn, ms: enMem.ms,
+                      worker: enMem.worker, cajas: enMem.cajas || [],
+                      parcial: enMem.parcial, estado: enMem.estado, pag_total: total}
+                   : null;
+  if (!hoja || !hoja.texto){
+    const jobId = (S.actual && S.actual.job_id) || (S.ultimoJob && S.ultimoJob.job_id) || "";
+    const d = await apiGet(API + "/hoja?" + q({pdf, pag, job_id: jobId}));
+    if (d && d.hoja) hoja = Object.assign({}, d.hoja, {cajas: d.hoja.cajas || []});
+    else if (!hoja) hoja = {pdf, pag, texto: "", sn: "", cajas: [], ms: 0, worker: ""};
+  }
+  if (S.mHoja && S.mHoja.pdf === pdf && S.mHoja.pag === pag && (hoja.texto || "").length < (S.mHoja.texto || "").length){
+    hoja = S.mHoja;   // no pisar una lectura más completa con una parcial
+  }
+  S.mHoja = hoja;
+  const totalHoja = Math.max(hoja.pag_total || 0, pag);
+  if (totalHoja !== total){
+    $("m-sub").textContent = `hoja ${pag} / ${totalHoja}` +
+      (hoja.worker ? ` · worker ${hoja.worker}` : "");
+    $("m-next").disabled = pag >= totalHoja;
+  }
+  pintarDetallesHoja(hoja, pag, totalHoja);
+  const caja = $("m-lectura");
+  if (caja){
+    if (!hoja.texto) caja.textContent = "el OCR no encontró texto legible en esta hoja.";
+    else caja.innerHTML = destacar(esc(hoja.texto), hoja.sn);
+  }
+  const cargada = img.classList.contains("cargada") || img.style.visibility === "visible";
+  if (cargada && (!mismaHoja || (hoja.cajas || []).length)) pintarCajas(hoja.cajas, "m-cajas");
+  pintarTrabajadores();
+  pintarRecientes();
+}
+
+function irHoja(delta){
+  if (!S.mHoja) return;
+  const total = Math.max(S.pagTotalDoc || 0, S.ocrTotal || 0, S.mHoja.pag);
+  const p = Math.min(Math.max(1, S.mHoja.pag + delta), total || 1);
+  if (p === S.mHoja.pag) return;
+  S.mSeguir = false; marcarseguir();
+  mostrarHojaModal(S.mHoja.pdf, p);
+}
+function hojaAnterior(){ irHoja(-1); }
+function hojaSiguiente(){ irHoja(1); }
+
+/* Datos de la hoja (lo que el pipeline extrajo de ella). */
+function pintarDetallesHoja(hoja, pag, total){
+  const cont = $("m-detalles");
+  if (!cont) return;
+  const filas = [
+    ["documento", hoja.pdf || "—"],
+    ["hoja", `${pag}${total ? " / " + total : ""}`],
+    ["serial", hoja.sn || "—"],
+    ["sede", hoja.sede || "—"],
+    ["marca", hoja.marca || "—"],
+    ["estado", hoja.estado || (hoja.texto ? "leída (sin clasificar)" : "—")],
+    ["tiempo OCR", hoja.ms ? (hoja.ms / 1000).toFixed(1) + " s" : "—"],
+    ["worker", hoja.worker || "—"],
+    ["lectura", hoja.parcial ? "parcial (cortada al ver el SN)" : (hoja.texto ? "completa" : "—")],
+  ];
+  cont.innerHTML = filas.map(([k, v]) =>
+    `<div><span class="et">${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
+}
+
+/* Historial por worker: cuántas hojas lleva, ritmo y por dónde va. */
+function pintarTrabajadores(){
+  const cont = $("m-workers");
+  if (!cont) return;
+  const lista = (S.trab && S.trab.workers) || [];
+  const prog = (S.trab && S.trab.programados) || 0;
+  const cap = $("m-nworkers");
+  if (cap) cap.textContent = prog ? `· ${prog} en paralelo` : "";
+  if (!lista.length){
+    cont.innerHTML = `<div class="mini">sin datos de workers todavía</div>`;
+    return;
+  }
+  cont.innerHTML = lista.map((w, i) => {
+    const pct = w.rango ? Math.min(100, Math.round(w.paginas / w.rango * 100)) : 0;
+    const media = w.eventos ? (w.ms_total / w.eventos / 1000) : 0;
+    const rangos = (w.rangos && w.rangos.length) ? w.rangos.join(", ") : w.worker;
+    return `<div class="trabajador">
+      <div class="cab"><span class="w">${w.slot === null || w.slot === undefined
+        ? (w.pid ? "worker · pid " + esc(w.pid) : "worker sin identificar")
+        : "worker " + (w.slot + 1)}</span>
+        <span class="n">${w.paginas}${w.rango ? "/" + w.rango : ""} hojas</span></div>
+      <div class="barra"><div class="relleno" style="transform:scaleX(${(pct / 100).toFixed(3)})"></div></div>
+      <div class="pie"><span>${media ? media.toFixed(1) + " s/hoja" : "—"}</span>
+        <span>rangos ${esc(rangos)}</span></div>
+    </div>`;
+  }).join("");
+}
+
+function pintarRecientes(){
+  const cont = $("m-recientes");
+  if (!cont) return;
+  const lista = (S.trab && S.trab.recientes) || [];
+  if (!lista.length){ cont.innerHTML = `<div class="mini">—</div>`; return; }
+  cont.innerHTML = lista.slice(0, 12).map((r) => {
+    const h = new Date((r.ts || 0) * 1000).toLocaleTimeString();
+    return `<div class="r"><span>w${esc(r.worker)} · hoja <b>${esc(r.pag)}</b></span>
+      <span class="m">${r.ms ? (r.ms / 1000).toFixed(1) + " s" : ""} ${h}</span></div>`;
+  }).join("");
+}
+
+/* Acumula lo que hizo cada worker (para el historial del visor). */
+function anotarTrabajador(ev){
+  if (!S.trab) S.trab = {workers: [], recientes: []};
+  const rango = (ev.detalle || "").replace("worker ", "").trim() || "?";
+  /* Identidad del worker: la ranura del pool (0,1,…) es la única estable; el
+     rango de páginas cambia con cada documento y el pid cambia por documento. */
+  const slot = (ev.slot !== undefined && ev.slot !== null && ev.slot >= 0) ? ev.slot : null;
+  const pid = ev.pid || null;
+  let o = S.trab.workers.find((x) => (slot !== null && x.slot === slot) ||
+                                    (slot === null && pid && x.pid === pid) ||
+                                    (slot === null && !pid && x.worker === rango));
+  if (!o){
+    o = {worker: rango, slot, pid, rangos: [], rango: 0, paginas: 0,
+         eventos: 0, ms_total: 0, ultima_pag: null};
+    S.trab.workers.push(o);
+  }
+  if (rango !== "?" && !o.rangos.includes(rango)) o.rangos.push(rango);
+  const m = /(\d+)-(\d+)/.exec(rango);
+  if (m) o.rango += Math.max(0, parseInt(m[2], 10) - parseInt(m[1], 10));
+  o.eventos++; o.paginas++;
+  o.ms_total += ev.ms_pagina || 0;
+  o.ultima_pag = ev.pag;
+  S.trab.recientes.unshift({worker: rango, pid: ev.pid, pdf: ev.pdf, pag: ev.pag,
+                            ms: ev.ms_pagina, ts: ev.ts});
+  S.trab.recientes = S.trab.recientes.slice(0, 14);
+}
+
+/* El visor maximizado sigue la hoja en vivo (o se queda donde el usuario lo dejó). */
+function refrescarModalLive(ev){
+  if (!S.modal) return;
+  if (!S.mSeguir){
+    pintarTrabajadores(); pintarRecientes();
+    return;
+  }
+  if (!S.mHoja || S.mHoja.pdf !== (ev.pdf || S.docActual) || S.mHoja.pag !== ev.pag){
+    mostrarHojaModal(ev.pdf || S.docActual, ev.pag);
+    return;
+  }
+  /* Misma hoja: actualizar texto/tiempo sin reiniciar la animación. */
+  if (ev.tipo === "ocr_pagina"){
+    S.mHoja.texto = ev.texto || S.mHoja.texto;
+    S.mHoja.ms = ev.ms_pagina || S.mHoja.ms;
+    S.mHoja.sn = ev.sn || S.mHoja.sn;
+    S.mHoja.cajas = cajasDe(ev);
+    S.mHoja.parcial = !!ev.parcial;
+    const caja = $("m-lectura");
+    if (caja) caja.innerHTML = destacar(esc(S.mHoja.texto || ""), S.mHoja.sn);
+    pintarDetallesHoja(S.mHoja, S.mHoja.pag,
+      Math.max(S.pagTotalDoc || 0, S.ocrTotal || 0, S.mHoja.pag));
+    pintarCajas(S.mHoja.cajas, "m-cajas");
+  }
+  pintarTrabajadores(); pintarRecientes();
+}
+
+/* ==========================================================================
+   CIERRE DE LA CORRIDA
+   ========================================================================== */
+function pintarFin(){
+  const caja = $("fin");
+  if (!caja) return;
+  const j = S.ultimoJob;
+  const fin = j && !S.actual && ["ok", "error", "cancelado"].includes(j.estado);
+  caja.hidden = !fin;
+  if (!fin) return;
+  caja.classList.toggle("error", j.estado === "error");
+  const est = $("fin-estado");
+  if (est) est.textContent = j.estado === "ok" ? "TERMINADO" :
+    (j.estado === "error" ? "TERMINADO CON ERROR" : "CANCELADO");
+  const ini = j.iniciado_en ? new Date(j.iniciado_en.replace(" ", "T")) : null;
+  const term = j.terminado_en ? new Date(j.terminado_en.replace(" ", "T")) : null;
+  const dur = ini && term ? Math.max(0, Math.round((term - ini) / 1000)) : 0;
+  if ($("fin-cuando")) $("fin-cuando").textContent =
+    (term ? term.toLocaleTimeString() : "") + (dur ? ` · duró ${mmss(dur)}` : "");
+  const r = S.resumen || {};
+  const pe = r.por_estado || {};
+  const ok = pe.OK || 0, rev = pe.A_REVISAR || 0;
+  const datos = [
+    ["job", `#${j.id}`], ["archivo", j.nombre],
+    ["páginas", `${j.pag_hechas}/${j.pag_total || "?"}`],
+    ["equipos OK", ok], ["a revisar", rev],
+    ["sedes", Object.keys(r.por_sede || {}).length || "—"],
+  ];
+  if (j.estado === "error" && (j.error || j.mensaje))
+    datos.push(["motivo", (j.error || j.mensaje).slice(0, 120)]);
+  const cont = $("fin-datos");
+  if (cont) cont.innerHTML = datos.map(([k, v]) =>
+    `<div><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join("");
+  const c = (S.resultados && S.resultados[0]) ? S.resultados[0].corrida : "";
+  const ruta = $("fin-ruta");
+  if (ruta) ruta.textContent = c ? `auto/salida/${c}/` : "auto/salida/ (ver pestaña Resultados)";
+}
+
+function irAResultados(){
+  mostrarPestana("resultados");
+  cargarResultados();
+}
+
+async function zipUltima(){
+  const c = (S.resultados && S.resultados[0]) ? S.resultados[0].corrida : "";
+  if (!c){ alert("todavía no hay una corrida con resultados"); return; }
+  window.open(API + "/zip?" + q({corrida: c}), "_blank");
+}
+
+/* Lectura secuencial: apila las franjas de la hoja en curso (como un escáner). */
+function pintarLecturaSecuencial(clave, ev){
+  const caja = $("v-lectura");
+  if (!caja) return;
+  const b = S.bandas && S.bandas[clave];
+  if (!b) return;
+  $("v-ocr-n").textContent = Object.keys(S.ocr || {}).length;
+  $("v-parcial").hidden = true;
+  const partes = b.lineas.map((x) =>
+    `<span class="banda">franja ${x.banda}/${b.bandas || "?"}</span>${destacar(esc(x.texto), ev.sn)}`);
+  caja.innerHTML = `<b>hoja ${ev.pag}</b> · leyendo por franjas` +
+    (b.bandas ? ` (${b.banda}/${b.bandas})` : "") + `<br>` + (partes.join("") || "…");
+  caja.scrollTop = caja.scrollHeight;
+}
+
+/* Resalta el serial candidato dentro de un texto ya escapado. */
+function destacar(htmlEscapado, sn){
+  if (!sn) return htmlEscapado;
+  const re = new RegExp(esc(sn).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  return htmlEscapado.replace(re, (m) => `<mark>${m}</mark>`);
+}
+
+/* Texto que el OCR leyó en la última hoja: se muestra tal cual (crudo, sin
+   validar) y se resalta el serial candidato. Es la ventana "en vivo" al OCR. */
+function pintarLecturaOcr(ev){
+  const caja = $("v-lectura");
+  if (!caja) return;
+  const texto = (ev && ev.texto) || "";
+  $("v-ocr-n").textContent = Object.keys(S.ocr || {}).length;
+  if (!texto){
+    caja.textContent = ev ? `hoja ${ev.pag}: el OCR no encontró texto legible.` : "esperando…";
+    return;
+  }
+  const html = destacar(esc(texto), ev.sn);
+  caja.innerHTML = `<b>hoja ${ev.pag}</b> · ${(ev.ms_pagina ? (ev.ms_pagina/1000).toFixed(1) + " s" : "")}` +
+    ` · worker ${esc(ev.detalle || "—")}<br>${html}`;
+}
+
+/* Ajustes que afectan al pipeline (se guardan y el próximo job los usa). */
+async function guardarAjustes(){
+  const cuerpo = {ocr_secuencial: $("chk-secuencial").checked,
+                  ocr_solo_sn: $("chk-solo-sn").checked};
+  const d = await apiPost(API + "/ajustes", cuerpo);
+  if (d.ok === false) alert(d.error || "error");
+  else $("inventario-info").textContent = "ajustes guardados · se aplican al próximo job";
+}
+
+function formatoLog(ev){
+  const h = new Date((ev.ts||0)*1000).toLocaleTimeString();
+  const quien = ev.pdf ? `${ev.pdf} ` : "";
+  if (ev.tipo === "pagina")
+    return `${h} ${quien}pág ${ev.pag}/${ev.pag_total} · ${ev.sn || "(sin serial)"} · ${ev.sede || "(sin sede)"} · ${ev.estado} · ${(ev.ms_pagina||0).toFixed(0)}ms · ${(ev.vel_pag_min||0).toFixed(1)} pág/min`;
+  /* Marcadores técnicos (mono, sin emoji) para que el log parezca del sistema. */
+  if (ev.tipo === "ocr_banda")
+    return null;   // las franjas se ven en el visor; no inundan el log
+  if (ev.tipo === "ocr_pagina")
+    return `${h} [ocr] ${ev.pdf || ""} hoja ${ev.pag}${ev.pag_total ? "/" + ev.pag_total : ""}` +
+           ` · ${(ev.ms_pagina/1000).toFixed(1)} s · worker ${ev.detalle || "—"}` +
+           (ev.sn ? ` · candidato ${ev.sn}` : "");
+  if (ev.tipo === "doc_inicio") return `${h} [doc] ${ev.pdf} — ${ev.pag_total} pág.`;
+  if (ev.tipo === "doc_fin")   return `${h} [doc] ${ev.pdf} — ${ev.detalle || ""}`;
+  if (ev.tipo === "job_inicio")return `${h} [job] iniciado ${ev.detalle || ""}`;
+  if (ev.tipo === "job_fin")   return `${h} [job] terminado ${ev.detalle || ""}`;
+  return `${h} ${ev.detalle || ev.tipo}`;
+}
+function anotarEvento(ev, silencioso){
+  if (ev.tipo === "doc_inicio"){ S.docActual = ev.pdf; S.pagTotalDoc = ev.pag_total || 0; S.paginas = []; S.ocr = {}; S.ocrTotal = ev.pag_total || 0; S.bandas = {}; pintarCajas([]); }
+  if (ev.tipo === "job_inicio"){ S.ocr = {}; S.ocrTotal = 0; S.ultimaOcr = null; pintarCajas([]); }
+  /* Lectura SECUENCIAL: cada franja de la hoja llega por separado y se va
+     apilando en el visor; la franja se dibuja encima de la miniatura. */
+  if (ev.tipo === "ocr_banda"){
+    if (ev.pdf) S.docActual = ev.pdf;
+    if (!S.bandas) S.bandas = {};
+    const clave = (ev.pdf || "") + "|" + ev.pag;
+    (S.bandas[clave] ||= {lineas: [], banda: 0, bandas: 0});
+    const b = S.bandas[clave];
+    b.banda = ev.banda || b.banda; b.bandas = ev.bandas || b.bandas;
+    const texto = (ev.texto || "").trim();
+    if (texto) b.lineas.push({banda: ev.banda, texto});
+    mostrarHoja(ev.pdf || S.docActual, ev.pag, {pag_total: ev.pag_total});
+    pintarFranja(ev);
+    pintarLecturaSecuencial(clave, ev);
+    if (S.modal) refrescarModalLive(ev);
+  }
+  /* Progreso REAL del OCR: llega hoja a hoja mientras los workers leen. */
+  if (ev.tipo === "ocr_pagina"){
+    if (ev.pdf) S.docActual = ev.pdf;
+    S.ocr = S.ocr || {};
+    S.ocr[ev.pag] = {pag: ev.pag, sn: ev.sn || "", ms: ev.ms_pagina, worker: ev.detalle || "",
+                      texto: ev.texto || "", cajas: cajasDe(ev), parcial: !!ev.parcial,
+                      estado: ev.estado || "", pdf: ev.pdf || S.docActual};
+    if (ev.pag_total) S.ocrTotal = Math.max(S.ocrTotal || 0, ev.pag_total);
+    S.ultimaOcr = ev;
+    S.paginas[ev.pag - 1] = S.paginas[ev.pag - 1] || undefined;   // reserva el hueco
+    mostrarHoja(ev.pdf || S.docActual, ev.pag,
+                {sn: ev.sn ? ev.sn + " (ocr)" : "", pag_total: ev.pag_total});
+    pintarLecturaOcr(ev);
+    if (!silencioso) anotarTrabajador(ev);
+    if (S.modal) refrescarModalLive(ev);
+    const fr = $("franja"); if (fr) fr.hidden = true;
+    const par = $("v-parcial");
+    if (par) par.hidden = !ev.parcial;
+    if (ev.parcial) $("v-parcial").textContent = "parcial · solo SN";
+  }
+  if (ev.tipo === "pagina"){
+    if (ev.pdf !== S.docActual){ S.docActual = ev.pdf; S.pagTotalDoc = ev.pag_total || 0; S.paginas = []; }
+    mostrarHoja(ev.pdf, ev.pag, ev);
+    S.paginas[ev.pag - 1] = {pag: ev.pag, estado: (ev.estado||"").toUpperCase(), sn: ev.sn, sede: ev.sede};
+    S.ultima = ev;
+  }
+  if (silencioso || ev.tipo === "ocr_banda") return;   // franjas: solo en el visor
+  const log = $("log");
+  const d = document.createElement("div");
+  d.className = (ev.nivel === "ok" ? "ok" : ev.nivel === "error" ? "error" : ev.nivel === "aviso" ? "aviso" : "info");
+  d.textContent = formatoLog(ev);
+  log.appendChild(d);
+  while (log.childNodes.length > 400) log.removeChild(log.firstChild);
+  const cercaAbajo = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  if (cercaAbajo) log.scrollTop = log.scrollHeight;
+  $("log-info").textContent = "último evento #" + ev.id;
+}
+function limpiarLog(){ $("log").innerHTML = ""; }
+
+/* ---------------- 3 · progreso ---------------- */
+function pintarProgreso(){
+  const enCurso = S.actual;
+  const j = enCurso || S.ultimoJob;
+  const ultima = S.ultima;
+  /* El acento del panel de progreso (corner ticks ámbar) solo cuando hay job. */
+  const caja = $("caja-progreso");
+  if (caja) caja.classList.toggle("viva", !!enCurso);
+  const visor = $("visor");
+  if (visor) visor.classList.toggle("trabajando", !!enCurso);
+  const hechas = S.paginas.filter(Boolean).length;
+  /* Progreso del documento = páginas ya LEÍDAS por el OCR (en vivo), no el final. */
+  const nOcr = Object.keys(S.ocr || {}).length;
+  const totalDoc = S.ocrTotal || S.pagTotalDoc || 0;
+  const pctDoc = (!enCurso && j && j.estado === "ok" && j.pag_total)
+    ? 100
+    : (totalDoc ? Math.min(100, Math.round(nOcr / totalDoc * 100)) : 0);
+  const pctJob = j && j.pag_total ? Math.min(100, Math.round(j.pag_hechas / j.pag_total * 100)) : pctDoc;
+  $("b-doc").style.transform = `scaleX(${pctDoc/100})`;
+  $("b-job").style.transform = `scaleX(${pctJob/100})`;
+  $("b-doc-t").textContent = pctDoc + "%";
+  $("b-job-t").textContent = pctJob + "%";
+  const faseViva = enCurso
+    ? (S.ultimaOcr && (!ultima || S.ultimaOcr.ts > (ultima.ts || 0)) ? "OCR hoja por hoja"
+       : (ultima ? "clasificando / resultado" : (j.fase === "ocr" ? "OCR hoja por hoja" : "preparando")))
+    : null;
+  $("prog-titulo").textContent = enCurso
+    ? `job #${j.id} · ${j.nombre} · ${j.estado} · ${faseViva} · ${S.docActual ? "documento: "+S.docActual : "esperando…"}`
+    : (j ? `última corrida: job #${j.id} · ${j.nombre} · ${j.estado}` +
+           (j.terminado_en ? ` — terminó ${j.terminado_en}` : " — sin job en curso")
+         : "Sin job en curso.");
+
+  $("m-pag").textContent  = ultima ? `${ultima.pag}/${ultima.pag_total}` : "—";
+  $("m-vel").textContent  = ultima && ultima.vel_pag_min ? ultima.vel_pag_min.toFixed(1)+" pág/min" : "—";
+  $("m-eta-doc").textContent = ultima ? mmss(ultima.eta_doc_s) : "—";
+  $("m-eta-job").textContent = ultima ? mmss(ultima.eta_global_s) : "—";
+  $("m-hechas").textContent = (j && j.pag_total) ? `${j.pag_hechas}/${j.pag_total}` : (hechas || 0);
+  $("m-pag").textContent = S.ultimaOcr && (!S.paginas[S.ultimaOcr.pag - 1])
+    ? `${S.ultimaOcr.pag}/${totalDoc || "?"} (ocr)` : (ultima ? `${ultima.pag}/${ultima.pag_total}` : "—");
+  /* (la tira por worker se pinta más abajo, en línea) */
+  $("m-sn").textContent = ultima ? `${ultima.sn || "—"} · ${ultima.sede || "—"}` : "—";
+
+  const cont = $("paginas");
+  cont.innerHTML = "";
+  const n = Math.max(S.pagTotalDoc || 0, S.ocrTotal || 0, S.paginas.length);
+  for (let i = 0; i < n; i++){
+    const p = S.paginas[i];
+    const d = document.createElement("div");
+    let cls = "hoja";
+    if (p){
+      if (p.estado === "OK") cls += " ok";
+      else if (p.estado === "DESCARTADA") cls += " descartada";
+      else cls += " aviso";
+    } else if (S.ocr && S.ocr[i + 1]){
+      cls += " ocr";     // leída por el OCR, aún sin clasificar
+    } else if (i === hechas && n && hechas < n){
+      cls += " activa";
+      d.innerHTML = `<span class="escaner"></span>${i+1}`;
+    }
+    d.className = cls;
+    if (!d.innerHTML) d.textContent = i + 1;
+    if (S.docActual && (p || i + 1 <= (S.pagTotalDoc || 0))){
+      const pag = i + 1;
+      d.classList.add("clic");
+      d.dataset.pdf = S.docActual; d.dataset.pag = pag;
+      d.addEventListener("click", () => mostrarHoja(S.docActual, pag,
+        p ? {sn: p.sn, sede: p.sede, estado: p.estado, pag_total: S.pagTotalDoc} : null));
+    }
+    d.title = p ? `pág ${p.pag} · ${p.estado} · ${p.sn || "sin serial"} · ${p.sede || "sin sede"}`
+                : `pág ${i+1} · pendiente`;
+    cont.appendChild(d);
+  }
+
+  const r = S.resumen || {};
+
+  /* Una pastilla por worker OCR: páginas hechas, ritmo y último serial visto.
+     Es la vista "de cada una" sin llenar el panel de información. */
+  const contW = $("workers");
+  if (contW){
+    contW.innerHTML = "";
+    const porWorker = {};
+    for (const p of Object.values(S.ocr || {})){
+      const w = (p.worker || "worker ?").replace("worker ", "w");
+      const o = (porWorker[w] ||= {hechas: 0, ms: [], sn: "", rango: 0});
+      o.hechas++; if (p.ms) o.ms.push(p.ms); if (p.sn) o.sn = p.sn;
+      const m = /w(\d+)-(\d+)/.exec(w);
+      if (m) o.rango = Math.max(o.rango, parseInt(m[2], 10) - parseInt(m[1], 10));
+    }
+    for (const [w, o] of Object.entries(porWorker)){
+      const media = o.ms.length ? o.ms.reduce((a, b) => a + b, 0) / o.ms.length : 0;
+      const d = document.createElement("div");
+      const pct = o.rango ? Math.min(1, o.hechas / o.rango) : 0;
+      d.className = "wrk" + (enCurso && pct < 1 ? " activo" : "");
+      d.innerHTML = `<span>${esc(w)}</span>
+        <span class="mini"><i style="transform:scaleX(${pct})"></i></span>
+        <span><b>${o.hechas}</b>${o.rango ? "/" + o.rango : ""} pág</span>
+        ${media ? `<span>${(media / 1000).toFixed(1)} s/pág</span>` : ""}
+        ${o.sn ? `<span class="sn">sn~${esc(o.sn)}</span>` : ""}`;
+      contW.appendChild(d);
+    }
+  }
+
+  const ch = $("chips-sede"); ch.innerHTML = "";
+  for (const [sede, n2] of Object.entries(r.por_sede || {}).sort((a,b) => b[1]-a[1])){
+    const c = document.createElement("span");
+    c.className = "chip"; c.innerHTML = `${esc(sede)} <b>${n2}</b>`; ch.appendChild(c);
+  }
+  const cs = $("chips-serial"); cs.innerHTML = "";
+  for (const s of (r.seriales || []).slice(0, 18)){
+    const c = document.createElement("span");
+    c.className = "chip " + (s.estado === "OK" ? "ok" : "aviso");
+    c.innerHTML = `${esc(s.sn)} <b>${esc((s.sede||"").slice(0,18))}</b>`;
+    cs.appendChild(c);
+  }
+  pintarFin();
+}
+
+/* ==========================================================================
+   VISTA SIMPLE / COMPLETA
+   La simple es la de todos los días: documentos, progreso y resultados.
+   La completa añade cola, log, métricas, workers, sistema y seriales.
+   Se recuerda en localStorage.
+   ========================================================================== */
+const VISTAS = ["simple", "completa"];
+function vistaGuardada(){ try { return localStorage.getItem("panel.vista") || "simple"; } catch(_) { return "simple"; } }
+function esSimple(){ return document.body.classList.contains("vista-simple"); }
+
+function aplicarVista(v, alArrancar){
+  const vista = VISTAS.includes(v) ? v : "simple";
+  document.body.classList.toggle("vista-simple", vista === "simple");
+  document.body.classList.toggle("vista-completa", vista === "completa");
+  const b = $("btn-vista");
+  if (b){
+    b.textContent = vista === "simple" ? "vista completa" : "vista simple";
+    b.setAttribute("aria-pressed", vista === "completa" ? "true" : "false");
+  }
+  try { localStorage.setItem("panel.vista", vista); } catch(_) {}
+  /* Etiquetas en lenguaje llano para la vista simple. */
+  const todo = $("btn-procesar-todo");
+  if (todo) todo.textContent = vista === "simple" ? "Procesar ahora" : "Disparar con toda la entrada";
+  const dry = $("dry-txt");
+  if (dry) dry.innerHTML = vista === "simple"
+    ? "solo simular (no mueve archivos ni envía correo)"
+    : "simulación (<code>--dry</code>: no mueve a procesados ni envía correo)";
+  /* Si la pestaña abierta es de la vista completa, se vuelve a Documentos. */
+  if (vista === "simple" && ["sistema", "seriales"].includes(pestanaActiva()))
+    mostrarPestana("entrada");
+  if (!alArrancar){
+    const id = vista === "simple" ? "vista-simple" : "vista-completa";
+    const p = document.getElementById(id);
+    if (p) p.textContent = vista === "simple"
+      ? "vista simple · lo esencial" : "vista completa · incluye lo técnico";
+  }
+}
+
+function alternarVista(){
+  aplicarVista(esSimple() ? "completa" : "simple");
+}
+
+/* ---------------- SSE ---------------- */
+function conectarSSE(){
+  if (S.es) S.es.close();
+  const es = new EventSource(API + "/progreso");
+  S.es = es;
+  es.addEventListener("open", () => { $("c-conexion").textContent = "en vivo (SSE)"; $("c-conexion").className = "chip ok"; });
+  es.addEventListener("snapshot", (e) => {
+    const snap = JSON.parse(e.data);
+    S.ultimoEventoId = 0;
+    limpiarLog();
+    S.paginas = []; S.docActual = null; S.pagTotalDoc = 0; S.ultima = null;
+    aplicarSnapshot(snap);
+    $("c-conexion").textContent = "en vivo (reconectado)";
+  });
+  es.addEventListener("evento", (e) => {
+    const ev = JSON.parse(e.data);
+    S.ultimoEventoId = Math.max(S.ultimoEventoId, ev.id);
+    anotarEvento(ev, false);
+    if (ev.tipo === "estado" || ev.tipo === "error") cargarEstado();
+    else pintarProgreso();
+    const fin = ev.tipo === "job_fin" || (ev.tipo === "estado" && ev.nivel === "ok");
+    if (fin){ cargarResultados(); cargarEspacio(); cargarEntrada(); }
+  });
+  es.addEventListener("estado", (e) => {
+    const d = JSON.parse(e.data);
+    pintarCola(d.cola); pintarWorker(d.worker);
+    S.actual = d.actual; S.ultimoJob = d.ultimo_job || null;
+    S.resumen = d.resumen || {};
+    pintarProgreso();
+  });
+  es.addEventListener("error", () => {
+    $("c-conexion").textContent = "reconectando…";
+    $("c-conexion").className = "chip aviso";
+  });
+}
+
+
+/* ---------------- Pestañas (skill `tab`: ARIA + teclado + hash) ----------------
+   Una sola pestaña visible; el panel NO se descarga (los IDs siguen en el DOM y
+   el SSE sigue vivo en todas). El hash (#cola, #resultados…) permite enlazar y
+   sobrevive al recargar; se usa replaceState para no llenar el historial. */
+const PESTANAS = ["entrada", "cola", "resultados", "sistema", "seriales"];
+
+function pestanaActiva(){
+  const h = (location.hash || "").replace("#", "");
+  return PESTANAS.includes(h) ? h : "entrada";
+}
+
+function mostrarPestana(nombre, moverFoco){
+  if (!PESTANAS.includes(nombre)) nombre = "entrada";
+  if (esSimple() && (nombre === "sistema" || nombre === "seriales")) nombre = "entrada";
+  for (const id of PESTANAS){
+    const tab = $("tab-" + id), vista = $("vista-" + id);
+    const activa = id === nombre;
+    tab.setAttribute("aria-selected", activa ? "true" : "false");
+    tab.tabIndex = activa ? 0 : -1;
+    vista.hidden = !activa;
+  }
+  // Lo crítico (mostrar/ocultar) ya está hecho; el resto va protegido para que
+  // un fallo de la URL o del indicador no rompa nunca el cambio de pestaña.
+  try { if (location.hash !== "#" + nombre) history.replaceState(null, "", "#" + nombre); }
+  catch (e) { /* p. ej. iframe con origen opaco: se ignora el hash */ }
+  try { moverIndicador(); } catch (e) { /* sin indicador, la pestaña sigue funcionando */ }
+  if (moverFoco) { try { $("tab-" + nombre).focus(); } catch (e) {} }
+}
+
+function moverIndicador(){
+  const act = document.querySelector('[role="tab"][aria-selected="true"]');
+  const ind = $("indicador");
+  if (!act || !ind) return;
+  ind.style.width = act.offsetWidth + "px";
+  ind.style.transform = "translateX(" + act.offsetLeft + "px)";
+}
+
+function badge(id, n, activo){
+  const e = $(id);
+  if (!e) return;
+  e.textContent = n;
+  e.className = "tab-badge" + (activo ? " activo" : (n ? "" : " cero"));
+}
+
+function inicializarPestanas(){
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => mostrarPestana(t.id.replace("tab-", "")));
+    t.addEventListener("keydown", (ev) => {
+      /* Solo las pestañas visibles: en la vista simple no existen Sistema ni Seriales. */
+      const visibles = tabs.filter((x) => !(esSimple() && x.hasAttribute("data-solo-completa")));
+      const pos = visibles.indexOf(t);
+      if (pos < 0) return;
+      let j = null;
+      if (ev.key === "ArrowRight") j = (pos + 1) % visibles.length;
+      else if (ev.key === "ArrowLeft") j = (pos - 1 + visibles.length) % visibles.length;
+      else if (ev.key === "Home") j = 0;
+      else if (ev.key === "End") j = visibles.length - 1;
+      if (j === null) return;
+      ev.preventDefault();
+      mostrarPestana(visibles[j].id.replace("tab-", ""), true);
+    });
+  });
+  window.addEventListener("hashchange", () => mostrarPestana(pestanaActiva()));
+  /* Visor maximizado: esc cierra, ←/→ cambian de hoja. */
+  window.addEventListener("keydown", (ev) => {
+    if (!S.modal) return;
+    if (ev.key === "Escape"){ ev.preventDefault(); cerrarVisor(); }
+    else if (ev.key === "ArrowLeft"){ ev.preventDefault(); hojaAnterior(); }
+    else if (ev.key === "ArrowRight"){ ev.preventDefault(); hojaSiguiente(); }
+  });
+  window.addEventListener("resize", moverIndicador);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(moverIndicador);
+  mostrarPestana(pestanaActiva());
+  // Reintento corto: el ancho real puede cambiar cuando cargan las tipografías.
+  setTimeout(moverIndicador, 300);
+}
+
+/* ---------------- arranque ---------------- */
+/* Embebido en el portal: no duplicar el título (el portal ya lo muestra) y
+   ajustar el relleno; los chips de estado se conservan. */
+if (typeof window !== "undefined" && window.self !== window.top)
+  document.body?.classList?.add("embebido");
+aplicarVista(vistaGuardada(), true);
+inicializarPestanas();
+conectarInputs();
+conectarSSE();
+cargarEntrada();
+cargarEstado();
+cargarResultados();
+cargarEspacio();
+cargarProcesados();
+cargarSeriales(0);
+setInterval(cargarEntrada, 60000);
+setInterval(cargarEspacio, 60000);
+</script>
+</body>
+</html>

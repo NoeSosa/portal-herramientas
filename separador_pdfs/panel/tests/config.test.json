@@ -1,0 +1,22 @@
+{
+  "_nota": "Config SOLO PARA PRUEBAS del panel (16/oct/2026). Igual que config.json (MODO LOCAL, sin Drive) pero con BD aparte, dry+sin-correo por defecto y un rclone FALSO (tests/bin/rclone) que registra cualquier invocación y falla: si el log queda vacío, se demuestra que en modo local nada llama a rclone.",
+  "host": "127.0.0.1",
+  "puerto": 8791,
+  "modo": "local",
+  "db": "/home/node/.openclaw/workspace/separador_pdfs/panel/tests/panel.test.db",
+  "entrada_local": "/home/node/.openclaw/workspace/separador_pdfs/entrada_local",
+  "inventarios_local": "/home/node/.openclaw/workspace/separador_pdfs/inventarios_local",
+  "rclone_remoto": "gdrive:",
+  "carpeta_entrada": "Entrada_Separador",
+  "carpeta_procesados": "Entrada_Separador/Procesados",
+  "rclone_config": "/home/node/.openclaw/workspace/separador_pdfs/panel/tests/sandbox_rclone.conf",
+  "rclone_bin": "/home/node/.openclaw/workspace/separador_pdfs/panel/tests/bin/rclone",
+  "dry_default": true,
+  "correo_activo": false,
+  "worker_idle_exit_s": 90,
+  "latido_s": 1,
+  "stale_s": 120,
+  "espera_lock_s": 20,
+  "worker_log_retro_lineas": 12,
+  "timeout_rclone_s": 120
+}

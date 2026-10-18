@@ -1,0 +1,41 @@
+# Datos y artefactos de ejecucion del separador (no van al repositorio)
+auto/entrada/
+auto/salida/
+auto/progress/
+auto/inventarios/
+auto/entrada_test/
+entrada_local/
+inventarios_local/
+Escaneados/
+Resultados_200dpi/
+corrida_300dpi/
+temp/
+
+# Panel
+panel/panel.db
+panel/panel.db-wal
+panel/panel.db-shm
+panel/tmp/
+panel/logs/
+panel/__pycache__/
+panel/config.json
+
+# Python
+__pycache__/
+*.pyc
+venv/
+venv-pdfseparador/
+
+# Resultados de pruebas
+panel/tests/salida/
+
+# Restos de corridas
+corrida_*.log
+prueba_lote.log
+*.xlsx
+!panel/config*.json
+
+# Copias de seguridad locales y base de pruebas
+*.bak*
+panel/tests/*.db
+panel/config.json

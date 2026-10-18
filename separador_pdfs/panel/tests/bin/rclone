@@ -1,0 +1,11 @@
+#!/bin/sh
+# rclone FALSO para pruebas (16/oct/2026).
+# Registra cada invocación y falla a propósito. Sirve para DEMOSTRAR que en modo
+# local nada llama a rclone: si el log queda vacío, no hubo ninguna llamada.
+# Se activa con RCLONE_BIN=/ruta/a/este/script (el pipeline) o
+# `rclone_bin` en panel/config.json (el panel y el worker).
+LOG=/home/node/.openclaw/workspace/separador_pdfs/panel/logs/rclone_invocaciones.log
+mkdir -p "$(dirname "$LOG")" 2>/dev/null
+printf '%s PID=%s INVOCADO: %s\n' "$(date +%H:%M:%S)" "$$" "$*" >> "$LOG"
+echo "rclone falso: no se permite llamar a rclone desde aquí" >&2
+exit 1

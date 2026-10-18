@@ -1,0 +1,19 @@
+{
+  "host": "127.0.0.1",
+  "puerto": 8791,
+  "modo": "local",
+  "db": "panel/panel.db",
+  "entrada_local": "entrada_local",
+  "inventarios_local": "inventarios_local",
+  "rclone_remoto": "",
+  "carpeta_entrada": "",
+  "carpeta_procesados": "",
+  "dry_default": true,
+  "correo_activo": false,
+  "worker_idle_exit_s": 600,
+  "latido_s": 1,
+  "stale_s": 120,
+  "espera_lock_s": 30,
+  "worker_log_retro_lineas": 12,
+  "timeout_rclone_s": 300
+}
