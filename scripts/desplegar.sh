@@ -150,6 +150,26 @@ if [[ $SOLO_BACKEND -eq 0 && $SIN_OCR -eq 0 ]]; then
   conectar_red hw-worker-ocr worker-ocr
 fi
 
+log "Recreando panel del separador (modo local, solo red interna)"
+recrear hw-panel
+docker run -d --name hw-panel --restart unless-stopped --network "$RED" \
+  -e PANEL_CONFIG=/home/node/.openclaw/workspace/separador_pdfs/panel/config.docker.json \
+  -e PANEL_PY_PANEL=/usr/bin/python3 \
+  -e PANEL_PY_SEPARADOR=/home/node/.openclaw/workspace/venv-pdfseparador/bin/python \
+  -e PANEL_LD_LIBRARY_PATH=/opt/lib -e PYTHONUNBUFFERED=1 \
+  -e HOME=/data -e SEPARADOR_WORKERS=2 \
+  -e PATH="$PATH_SIN_VENV" \
+  -v "${VOL_DATOS}:/data" \
+  -v "${VOL_OPENCLAW}:${OPENCLAW_MONTADO}:rw" \
+  --security-opt no-new-privileges:true --cap-drop ALL \
+  --cpus 2.0 --memory 4g \
+  herramientas-web-ocr:local sh -c "\
+    python3 /home/node/.openclaw/workspace/separador_pdfs/panel/warmup_ocr.py || true; \
+    exec python3 /home/node/.openclaw/workspace/separador_pdfs/panel/panel_server.py" >/dev/null
+
+# Alias DNS que usa nginx para servir el panel en /panel/ (ver nginx.conf).
+conectar_red hw-panel panel
+
 log "Recreando frontend (nginx)"
 recrear hw-frontend
 docker run -d --name hw-frontend --restart unless-stopped --network "$RED" \
@@ -186,6 +206,13 @@ fi
 
 log "Estado final"
 docker ps --filter "name=hw-" --format 'table {{.Names}}\t{{.Status}}'
+
+log "Comprobando el panel del separador a través de nginx"
+if docker exec hw-frontend wget -qO- http://127.0.0.1/panel/api/health >/dev/null 2>&1; then
+  echo "    nginx → panel OK  (http://127.0.0.1:8080/panel/)"
+else
+  error "nginx no alcanza al panel (/panel/api/health falla). Revisa el alias 'panel'."
+fi
 
 cat <<'FIN'
 

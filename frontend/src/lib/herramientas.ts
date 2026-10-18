@@ -96,6 +96,16 @@ export const HERRAMIENTAS: readonly Herramienta[] = [
     etiqueta: "OCR · MINUTOS",
   },
   {
+    id: "panel-separador",
+    nombre: "Panel del separador",
+    descripcion: "Cola, progreso en vivo por página y descarga de resultados.",
+    icono: "pdf",
+    disponible: true,
+    subeArchivos: false,
+    esPesada: false,
+    etiqueta: "PANEL · EN VIVO",
+  },
+  {
     id: "finanzas",
     nombre: "Panel de finanzas",
     descripcion: "Consulta movimientos, presupuestos y tarjetas.",

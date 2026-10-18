@@ -43,9 +43,10 @@ como scripts de línea de comandos en el workspace de OpenClaw.
 
 | Servicio | Imagen | Función |
 |---|---|---|
-| `frontend` | nginx + build de React | Sirve el SPA, proxya `/api` |
+| `frontend` | nginx + build de React | Sirve el SPA, proxya `/api` y `/panel/` |
 | `backend` | python:3.11-slim | API HTTP (FastAPI) |
 | `worker` | misma que backend | Procesa trabajos pesados |
+| `panel` | misma que el worker OCR | **Panel del separador** (cola, progreso SSE, resultados y ZIPs). Servido en `/panel/` |
 | `redis` | redis:7-alpine | Cola de trabajos y caché |
 
 ### Por qué hay una cola de trabajos
@@ -71,6 +72,42 @@ herramienta, se implementan mal:
 La clave de API se inyecta por **variable de entorno**, nunca por línea de
 comandos: los argumentos de un proceso son visibles para cualquiera que liste
 procesos en el host.
+
+## Panel del separador (en vivo)
+
+La herramienta **Panel del separador** no reimplementa nada: es el panel completo
+(cola de trabajos, progreso por página por SSE, entrada local, explorador de
+resultados, descarga individual y ZIP por sede, uso de disco y limpieza) que vive
+en `separador_pdfs/panel/` del workspace.
+
+- Corre como servicio **`panel`** (`hw-panel`) con la imagen del worker OCR: ya
+trae FastAPI/uvicorn/PyMuPDF y libgomp en `/opt/lib`.
+- **No publica puertos**: nginx lo alcanza por el alias DNS `panel:8791` y lo sirve
+en **`/panel/`** (UI) y **`/api/panel/`** (API), así que se usa por el mismo túnel
+SSH: `http://localhost:8080/panel/`. La página del SPA lo muestra en un iframe.
+- El **workspace va en escritura** (es el único junto al backend): ahí escribe su
+BD (`panel.db`), la entrada local (`entrada_local/`) y los resultados
+(`auto/salida/Separador_<fecha>/`).
+- Modo **local** (sin Drive): el panel no habla con rclone. En la BD del panel hay
+una tabla `cola`, otra `eventos` y tablas reservadas para el futuro inventario.
+
+⚠️ **Dos detalles que cuestan tiempo si se olvidan**:
+1. **Precalentar los modelos OCR.** `warmup_ocr.py` se ejecuta antes de arrancar el
+   panel. Sin él, los N workers OCR descargan los modelos (~23 MB) a la vez al
+   mismo directorio, uno falla y **el documento se procesa a medias en silencio**.
+   Los modelos viven en el volumen `datos` (`HOME=/data` → `/data/.paddleocr`), así
+   que sobreviven a las recreaciones del contenedor.
+2. **`SEPARADOR_WORKERS=2`**: el contenedor tiene 2 vCPU (el host usa 3).
+
+Comandos útiles:
+
+```bash
+# Recrear solo el panel tras cambiar su código o config
+docker rm -f hw-panel && bash scripts/desplegar.sh   # el script ya lo incluye
+
+# Logs
+docker logs -f hw-panel
+```
 
 ## Puesta en marcha
 
@@ -172,6 +209,7 @@ herramientas-web/
 | Identificar canción | ✅ Implementada |
 | Comprobante a finanzas | ✅ Implementada |
 | Separador por sede | ✅ Implementada |
+| Panel del separador (en vivo) | ✅ Implementada |
 | Panel de finanzas | ✅ Implementada |
 
 ## Script de despliegue

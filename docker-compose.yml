@@ -239,6 +239,71 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- Panel del separador de PDFs (16/oct/2026) ---------------------------
+  # El panel en vivo (cola, progreso SSE, entrada local, resultados y ZIPs).
+  # Reutiliza la imagen OCR: ya trae fastapi/uvicorn/PyMuPDF y libgomp en /opt/lib.
+  # NO publica puertos: nginx lo alcanza como `panel:8791` y lo sirve en /panel/,
+  # así que se accede por el mismo túnel SSH (127.0.0.1:8080/panel/).
+  # El workspace va en ESCRITURA: el panel guarda su BD, la entrada local
+  # (entrada_local/) y los resultados (auto/salida/) ahí mismo.
+  panel:
+    image: herramientas-web-ocr:local
+    container_name: hw-panel
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - |
+        # 1) Precalienta los modelos OCR UNA vez (si no, los N workers los
+        #    descargan a la vez y uno falla → se pierden páginas del documento).
+        # 2) Levanta el panel. El warmup nunca bloquea el arranque.
+        python3 /home/node/.openclaw/workspace/separador_pdfs/panel/warmup_ocr.py || true
+        exec python3 /home/node/.openclaw/workspace/separador_pdfs/panel/panel_server.py
+    environment:
+      PANEL_CONFIG: /home/node/.openclaw/workspace/separador_pdfs/panel/config.docker.json
+      # El worker del panel (que lanza el pipeline) usa el python del sistema
+      # de esta imagen (trae FastAPI/uvicorn).
+      PANEL_PY_PANEL: /usr/bin/python3
+      # El pipeline OCR usa el venv del workspace (el mismo validado en el host).
+      PANEL_PY_SEPARADOR: /home/node/.openclaw/workspace/venv-pdfseparador/bin/python
+      PANEL_LD_LIBRARY_PATH: /opt/lib
+      # 2 workers OCR: el contenedor tiene 2 vCPU (el host usa 3).
+      SEPARADOR_WORKERS: "2"
+      # Los modelos de PaddleOCR (~23 MB) se descargan la primera vez. Con HOME
+      # apuntando al volumen `datos` (que el `inicializador` deja escribible para
+      # uid 1000) quedan PERSISTENTES: sin esto, cada recreación del contenedor
+      # volvería a descargarlos y el primer job tardaría minutos de más.
+      HOME: /data
+      PYTHONUNBUFFERED: "1"
+      PATH: /opt/venv/bin:/usr/local/bin:/usr/bin:/bin
+    volumes:
+      - openclaw-workspace:/home/node/.openclaw:rw
+      - datos:/data
+    networks:
+      - portal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Comparte CPU/RAM con el worker OCR: el panel solo lanza el pipeline cuando
+    # alguien dispara un job, y nunca a la vez que otro job (lock del pipeline).
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8791/api/health', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # --- Redis: cola de trabajos y caché -------------------------------------
   redis:
     image: redis:7-alpine

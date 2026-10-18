@@ -8,6 +8,7 @@ import { HERRAMIENTAS, buscarHerramienta } from "./lib/herramientas";
 import { PaginaCancion } from "./pages/PaginaCancion";
 import { PaginaComprobante } from "./pages/PaginaComprobante";
 import { PaginaFinanzas } from "./pages/PaginaFinanzas";
+import { PaginaPanelSeparador } from "./pages/PaginaPanelSeparador";
 import { PaginaSeparador } from "./pages/PaginaSeparador";
 import { PaginaTTS } from "./pages/PaginaTTS";
 import { PaginaTranscribir } from "./pages/PaginaTranscribir";
@@ -36,6 +37,7 @@ const VISTAS: Record<string, () => React.ReactElement> = {
   comprobante: PaginaComprobante,
   finanzas: PaginaFinanzas,
   separador: PaginaSeparador,
+  "panel-separador": PaginaPanelSeparador,
 };
 
 export default function App() {
