@@ -45,3 +45,4 @@ backend/separador/
 
 # Estado del despliegue automatico
 .despliegue/
+separador_pdfs/
