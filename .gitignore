@@ -42,3 +42,6 @@ tsconfig.tsbuildinfo
 # Backend: copia del motor del separador para horneado en la imagen OCR.
 # La fuente de verdad vive en ../separador_pdfs/ del workspace.
 backend/separador/
+
+# Estado del despliegue automatico
+.despliegue/
