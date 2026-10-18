@@ -2,6 +2,39 @@
 
 Herramientas internas servidas por web, accesibles **solo por túnel SSH**.
 
+En el mismo repositorio vive el taller del separador de PDFs (`separador_pdfs/`):
+el pipeline de OCR y el panel que el portal publica en `/panel/`.
+
+## Piezas
+
+| Ruta | Qué es |
+|---|---|
+| `frontend/` | Portal web (React + Vite). nginx sirve la app y hace de proxy al backend. |
+| `backend/` | API en FastAPI: finanzas, visión, transcripción, texto a voz, separador, canción. |
+| `separador/` | Copia del motor del separador que se hornea en la imagen OCR. |
+| `separador_pdfs/` | Taller del separador: pipeline de OCR, panel completo y sus pruebas. |
+| `docker-compose.yml` | Servicios: frontend, backend, worker, worker OCR, redis y panel. |
+| `scripts/desplegar.sh` | Reconstruye imágenes y recrea contenedores sin `docker compose`. |
+| `docs/` | Diseño y notas de seguridad. |
+
+El panel del separador se sirve en `/panel/` y su API en `/api/panel/`. El servicio
+`panel` no publica puertos: nginx lo alcanza por la red interna del portal.
+
+## Cómo se levanta
+
+```bash
+cp .env.example .env      # completar valores locales
+bash scripts/desplegar.sh
+```
+
+`docker-compose.yml` es la fuente de verdad de la topología. Si cambia un puerto,
+un volumen o una variable, hay que reflejarlo también en `scripts/desplegar.sh`.
+
+## Datos que no van al repositorio
+
+`.env`, bases de datos, `node_modules/`, resultados y documentos escaneados quedan
+fuera por `.gitignore`. Cada máquina aporta su configuración local.
+
 ## Qué es
 
 Un portal que expone como interfaz web las herramientas que antes solo vivían
