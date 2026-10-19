@@ -114,6 +114,11 @@ pipeline prefiere ese archivo; si se borra, vuelve a usar el inventario original
 
 - Los trabajos se ejecutan en un proceso aparte: cerrar el navegador no los
   detiene.
+- **Un job a la vez.** El worker del panel saca trabajos de la cola de uno en uno.
+  Dentro de cada PDF, `SEPARADOR_WORKERS` (2) reparte las paginas en rangos
+  contiguos y sin solape: el worker 1 toma el primer tramo y el 2 el siguiente.
+  El panel muestra ambos con su rango, paginas leidas y ultima hoja. El "worker
+  del panel" es otro: es el que ejecuta el job, no el que lee las paginas.
 - Si un worker de OCR termina sin leer alguna hoja, el pipeline lo detecta, lo
   registra y reintenta esas hojas antes de clasificar.
 - Los correos estan desactivados por defecto (se ejecuta con `--sin-correo`).

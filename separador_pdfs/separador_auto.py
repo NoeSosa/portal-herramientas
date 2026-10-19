@@ -760,6 +760,10 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
     doc_t = __import__("fitz").open(ruta_pdf)
     total = len(doc_t)
     doc_t.close()
+    # PANEL: el documento empieza AQUÍ, antes del OCR. Si se publica después,
+    # el evento doc_inicio llega tras las lecturas y la UI borra el progreso
+    # que acaba de recibir (se veía un solo worker / páginas en cero).
+    panel_job_evento("doc_inicio", pdf=os.path.basename(ruta_pdf), pag_total=total)
     _t_ocr_ini = time.time()   # PANEL: base para estimar ms por página
     # PANEL: los workers OCR publican su lectura de cada hoja en este archivo
     # (lo lee el worker del panel para mostrar el texto EN VIVO).
@@ -840,7 +844,6 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
 
     # PANEL: el OCR corre por lotes → se reparte su tiempo entre las páginas
     _ms_ocr_prom = (time.time() - _t_ocr_ini) * 1000.0 / max(1, total)
-    panel_job_evento("doc_inicio", pdf=os.path.basename(ruta_pdf), pag_total=total)
 
     # Detección por página
     paginas = []

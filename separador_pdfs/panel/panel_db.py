@@ -385,32 +385,45 @@ def ingerir_progreso(con, progress_dir, job_id, cola_id, offset=0):
 
 
 def resumen_workers(con, job_id, limite=14):
-    """Agregado por worker OCR del job + últimas hojas leídas (historial).
+    """Agregado por worker OCR del ÚLTIMO PDF del job + últimas hojas leídas.
 
-    El identificador del worker es el rango de páginas que se le asignó
-    (`detalle`: "0-26", "worker 27-52"…): es lo único estable entre corridas.
+    Un job puede llevar varios PDFs. Mezclar sus páginas en un mismo contador
+    confunde (las páginas se repiten: la 1 de cada documento), así que el panel
+    muestra el documento que se está leyendo: se filtra por el último `pdf` con
+    eventos OCR. El identificador estable del worker es el slot (0,1,…).
     """
-    vacio = {"workers": [], "recientes": []}
+    vacio = {"workers": [], "recientes": [], "pdf": None}
     if not job_id:
         return vacio
+    fila_pdf = con.execute(
+        "SELECT pdf FROM eventos WHERE job_id=? AND tipo='ocr_pagina'"
+        " AND COALESCE(pdf,'')<>'' ORDER BY id DESC LIMIT 1", (job_id,)).fetchone()
+    pdf = fila_pdf["pdf"] if fila_pdf else None
+    filtro_pdf = " AND pdf=?" if pdf else ""
+    params_pdf = (pdf,) if pdf else ()
+
     # 1º los workers reales del pool (slot 0,1,… = los que corren en paralelo)
     filas = con.execute(
         "SELECT slot_worker AS pid, GROUP_CONCAT(DISTINCT detalle) AS rangos,"
-        " COUNT(*) AS n, AVG(COALESCE(ms_pagina,0)) AS ms_medio,"
+        " COUNT(DISTINCT pag) AS n, AVG(COALESCE(ms_pagina,0)) AS ms_medio,"
         " SUM(COALESCE(ms_pagina,0)) AS ms_total, MAX(ts) AS ultimo_ts,"
         " MAX(pag) AS ultima_pag, COUNT(DISTINCT pag) AS pags"
         " FROM eventos WHERE job_id=? AND tipo='ocr_pagina' AND slot_worker IS NOT NULL"
-        " GROUP BY slot_worker ORDER BY slot_worker", (job_id,)).fetchall()
+        + filtro_pdf +
+        " GROUP BY slot_worker ORDER BY slot_worker",
+        (job_id, *params_pdf)).fetchall()
     hay_slots = bool(filas)
     if not filas:
         # Corridas anteriores al 18/oct/2026 (sin slot): se agrupa por proceso.
         filas = con.execute(
             "SELECT COALESCE(pid_worker, 0) AS pid, GROUP_CONCAT(DISTINCT detalle) AS rangos,"
-            " COUNT(*) AS n, AVG(COALESCE(ms_pagina,0)) AS ms_medio,"
+            " COUNT(DISTINCT pag) AS n, AVG(COALESCE(ms_pagina,0)) AS ms_medio,"
             " SUM(COALESCE(ms_pagina,0)) AS ms_total, MAX(ts) AS ultimo_ts,"
             " MAX(pag) AS ultima_pag, COUNT(DISTINCT pag) AS pags"
             " FROM eventos WHERE job_id=? AND tipo='ocr_pagina'"
-            " GROUP BY COALESCE(pid_worker, 0) ORDER BY MIN(id)", (job_id,)).fetchall()
+            + filtro_pdf +
+            " GROUP BY COALESCE(pid_worker, 0) ORDER BY MIN(id)",
+            (job_id, *params_pdf)).fetchall()
     workers = []
     for f in filas:
         rangos = [x.replace("worker ", "").strip() for x in (f["rangos"] or "").split(",") if x]
@@ -421,7 +434,7 @@ def resumen_workers(con, job_id, limite=14):
                 rango += max(0, int(m.group(2)) - int(m.group(1)))
         slot = f["pid"] if hay_slots else None
         workers.append({"worker": rangos[0] if rangos else "?", "rangos": rangos,
-                        "slot": slot,
+                        "slot": slot, "pdf": pdf,
                         "pid": f["pid"] or None, "rango": rango,
                         "paginas": f["pags"] or 0, "eventos": f["n"] or 0,
                         "ms_medio": round(f["ms_medio"] or 0, 1),
@@ -432,9 +445,10 @@ def resumen_workers(con, job_id, limite=14):
                   "sn": r["sn"] or "", "ts": r["ts"]}
                  for r in con.execute(
                      "SELECT detalle, pid_worker, pdf, pag, ms_pagina, sn, ts FROM eventos"
-                     " WHERE job_id=? AND tipo='ocr_pagina' ORDER BY id DESC LIMIT ?",
-                     (job_id, limite)).fetchall()]
-    return {"workers": workers, "recientes": recientes}
+                     " WHERE job_id=? AND tipo='ocr_pagina'" + filtro_pdf +
+                     " ORDER BY id DESC LIMIT ?",
+                     (job_id, *params_pdf, limite)).fetchall()]
+    return {"workers": workers, "recientes": recientes, "pdf": pdf}
 
 
 def hoja_ocr(con, pdf, pag, job_id=None):

@@ -554,17 +554,31 @@ a.mini:hover{border-color:var(--acento);color:var(--acento);text-decoration:none
 .hoja.clic{cursor:pointer}
 /* Hoja ya leída por el OCR pero aún sin clasificar (progreso real, no el final) */
 .hoja.ocr{background-color:oklch(0.2 0.02 78 / .35);border-color:var(--acento-tenue);color:var(--tinta-tenue)}
-.workers{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
-.wrk{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:10.5px;
-     letter-spacing:.04em;color:var(--tinta-apagada);border:1px solid var(--linea);padding:3px 8px;
-     background-color:var(--fondo)}
-.wrk b{color:var(--acento);font-weight:500}
-.wrk .mini{display:inline-block;width:44px;height:4px;background-color:oklch(0.12 0.004 260);
-           border:1px solid var(--linea);overflow:hidden}
-.wrk .mini i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;
-             background-color:var(--acento);transition:transform .3s var(--ease)}
-.wrk.activo{border-color:var(--acento-tenue)}
-.wrk .sn{color:var(--tinta-tenue)}
+/* Workers OCR: dos tarjetas estables (slot 0/1), con su rango y avance. */
+.workers-cab{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;margin-top:14px}
+.workers-cab .et{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;
+                 text-transform:uppercase;color:var(--tinta-apagada)}
+.workers-cab .mini{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.03em;
+                   color:var(--tinta-apagada)}
+.workers{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;margin-top:8px}
+.worker-card{border:1px solid var(--linea);background-color:var(--fondo);padding:8px 10px;
+             transition:border-color var(--t-micro) var(--ease)}
+.worker-card.activo{border-color:var(--acento);box-shadow:inset 3px 0 0 var(--acento)}
+.worker-card.completo{border-color:var(--ok)}
+.worker-cab{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.worker-cab b{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;
+              text-transform:uppercase;color:var(--tinta)}
+.worker-estado{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;
+               text-transform:uppercase;color:var(--tinta-apagada)}
+.worker-card.activo .worker-estado{color:var(--acento)}
+.worker-card.completo .worker-estado{color:var(--ok)}
+.worker-num{display:flex;gap:6px;align-items:baseline;margin:5px 0 4px}
+.worker-num b{font-family:var(--font-mono);font-size:18px;font-weight:500;color:var(--tinta)}
+.worker-num span{font-family:var(--font-mono);font-size:10.5px;color:var(--tinta-apagada)}
+.worker-card .barra{height:6px}
+.worker-pie{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;margin-top:5px;
+            font-family:var(--font-mono);font-size:9.5px;color:var(--tinta-apagada)}
+.worker-vacio{font-family:var(--font-mono);font-size:10.5px;color:var(--tinta-apagada);padding:6px 2px}
 /* Filtros: misma estética mono que las etiquetas de datos */
 .filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 .filtros input[type=text],.filtros input[type=search],.filtros select,
@@ -798,7 +812,11 @@ body.embebido .app{padding:10px 12px 24px}
         <div class="metrica"><div class="k">páginas hechas</div><div class="v" id="m-hechas">—</div></div>
         <div class="metrica"><div class="k">serial/sede actual</div><div class="v" id="m-sn" style="font-size:13px">—</div></div>
       </div>
-      <div class="workers" id="workers" data-avanzado="1"></div>
+      <div class="workers-cab">
+        <span class="et">Lectores OCR</span>
+        <span class="mini" id="workers-nota">2 en paralelo · cada uno con un rango distinto del mismo PDF</span>
+      </div>
+      <div class="workers" id="workers"></div>
       <div class="lista-chips" id="chips-sede" data-avanzado="1"></div>
       <div class="lista-chips" id="chips-serial" data-avanzado="1"></div>
 
@@ -958,7 +976,8 @@ body.embebido .app{padding:10px 12px 24px}
         <div><span class="et">modo</span><span id="s-modo">—</span></div>
         <div><span class="et">simulación por defecto</span><span id="s-dry">—</span></div>
         <div><span class="et">correo</span><span id="s-correo">—</span></div>
-        <div><span class="et">worker</span><span id="s-worker">—</span></div>
+        <div><span class="et">worker del panel</span><span id="s-worker">—</span></div>
+        <div><span class="et">workers OCR</span><span id="s-workers">—</span></div>
         <div><span class="et">entrada</span><span id="s-entrada">—</span></div>
         <div><span class="et">inventarios</span><span id="s-inventarios">—</span></div>
         <div><span class="et">resultados</span><span id="s-salida">—</span></div>
@@ -1059,6 +1078,12 @@ const fechaCorrida = (c) => {
   const m = /Separador_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/.exec(c || "");
   if (!m) return c || "—";
   return `${Number(m[3])} ${MESES[Number(m[2]) - 1] || ""} ${m[1]} · ${m[4]}:${m[5]}`;
+};
+/* Los rangos del pipeline son 0-based y con el fin exclusivo ("0-8" = 1–8). */
+const formatearRango = (r) => {
+  const m = /^(\d+)-(\d+)$/.exec(String(r || "").trim());
+  if (!m) return String(r || "—");
+  return `${Number(m[1]) + 1}–${Number(m[2])}`;
 };
 const q = (o) => Object.entries(o).map(([k,v]) => k+"="+encodeURIComponent(v)).join("&");
 
@@ -1521,7 +1546,10 @@ function pintarWorker(w){
   w = w || {};
   const c = $("c-worker");
   const trabajando = w.estado === "trabajando";
-  c.textContent = "worker " + (w.vivo ? `vivo · ${w.pid}` : "detenido") + (w.estado ? ` · ${w.estado}` : "");
+  /* Este es el worker de la COLA (uno solo). Los OCR son otro par y se ven
+     en las tarjetas «Lectores OCR» del progreso. */
+  c.textContent = "cola · " + (w.estado || (w.vivo ? "activa" : "detenida"));
+  c.title = w.pid ? `worker del panel · pid ${w.pid}` : "worker del panel";
   c.className = "chip " + (trabajando ? "ok latir" : (w.vivo ? "" : "aviso"));
 }
 function pintarModo(snap){
@@ -1587,7 +1615,8 @@ function aplicarSnapshot(snap){
   S.resumen = snap.resumen || {};
   if (snap.trabajadores) S.trab = {workers: snap.trabajadores.workers || [],
                                    recientes: snap.trabajadores.recientes || [],
-                                   programados: snap.trabajadores.programados || 0};
+                                   programados: snap.trabajadores.programados || 0,
+                                   pdf: snap.trabajadores.pdf || ""};
   if (snap.espacio) pintarEspacio(snap.espacio);
   pintarSistema(snap);
   if (snap.eventos && snap.eventos.length && !S.ultimoEventoId){
@@ -1602,7 +1631,8 @@ function pintarSistema(snap){
   set("s-modo", local ? "local (sin rclone)" : "drive");
   set("s-dry", snap.dry_default ? "sí (--dry)" : "no (real)");
   set("s-correo", snap.correo_activo ? "activo" : "silenciado (--sin-correo)");
-  set("s-worker", snap.worker ? (snap.worker.vivo ? `vivo · pid ${snap.worker.pid} · ${snap.worker.estado}` : "detenido") : "—");
+  set("s-worker", snap.worker ? (snap.worker.vivo ? `panel · vivo · pid ${snap.worker.pid} · ${snap.worker.estado}` : "panel · detenido") : "—");
+  set("s-workers", snap.trabajadores ? `${snap.trabajadores.programados || "?"} en paralelo` : "—");
   set("s-entrada", snap.entrada ? snap.entrada.ruta : "—");
   set("s-inventarios", (snap.inventarios && snap.inventarios.length) ? snap.inventarios.map(i => i.Name).join(", ") : "—");
   set("s-salida", (snap.db || "").replace(/panel\.db$/, "") + "auto/salida/");
@@ -1866,7 +1896,8 @@ function pintarTrabajadores(){
   cont.innerHTML = lista.map((w, i) => {
     const pct = w.rango ? Math.min(100, Math.round(w.paginas / w.rango * 100)) : 0;
     const media = w.eventos ? (w.ms_total / w.eventos / 1000) : 0;
-    const rangos = (w.rangos && w.rangos.length) ? w.rangos.join(", ") : w.worker;
+    const rangos = (w.rangos && w.rangos.length)
+      ? w.rangos.map(formatearRango).join(", ") : formatearRango(w.worker);
     return `<div class="trabajador">
       <div class="cab"><span class="w">${w.slot === null || w.slot === undefined
         ? (w.pid ? "worker · pid " + esc(w.pid) : "worker sin identificar")
@@ -1907,12 +1938,15 @@ function anotarTrabajador(ev){
          eventos: 0, ms_total: 0, ultima_pag: null};
     S.trab.workers.push(o);
   }
-  if (rango !== "?" && !o.rangos.includes(rango)) o.rangos.push(rango);
-  const m = /(\d+)-(\d+)/.exec(rango);
-  if (m) o.rango += Math.max(0, parseInt(m[2], 10) - parseInt(m[1], 10));
+  if (rango !== "?" && !o.rangos.includes(rango)){
+    o.rangos.push(rango);
+    const m = /(\d+)-(\d+)/.exec(rango);
+    if (m) o.rango += Math.max(0, parseInt(m[2], 10) - parseInt(m[1], 10));
+  }
   o.eventos++; o.paginas++;
   o.ms_total += ev.ms_pagina || 0;
   o.ultima_pag = ev.pag;
+  o.ultimo_ts = ev.ts || Date.now() / 1000;
   S.trab.recientes.unshift({worker: rango, pid: ev.pid, pdf: ev.pdf, pag: ev.pag,
                             ms: ev.ms_pagina, ts: ev.ts});
   S.trab.recientes = S.trab.recientes.slice(0, 14);
@@ -2073,8 +2107,23 @@ function formatoLog(ev){
   return `${h} ${ev.detalle || ev.tipo}`;
 }
 function anotarEvento(ev, silencioso){
-  if (ev.tipo === "doc_inicio"){ S.docActual = ev.pdf; S.pagTotalDoc = ev.pag_total || 0; S.paginas = []; S.ocr = {}; S.ocrTotal = ev.pag_total || 0; S.bandas = {}; pintarCajas([]); }
-  if (ev.tipo === "job_inicio"){ S.ocr = {}; S.ocrTotal = 0; S.ultimaOcr = null; pintarCajas([]); }
+  if (ev.tipo === "doc_inicio"){
+    S.docActual = ev.pdf; S.pagTotalDoc = ev.pag_total || 0; S.paginas = [];
+    S.ocr = {}; S.ocrTotal = ev.pag_total || 0; S.bandas = {}; pintarCajas([]);
+    /* Nuevo PDF: los mismos slots siguen, pero su avance arranca de cero. */
+    if (S.trab){
+      S.trab.pdf = ev.pdf || "";
+      S.trab.recientes = [];
+      for (const w of (S.trab.workers || [])){
+        w.paginas = 0; w.eventos = 0; w.ms_total = 0; w.rango = 0; w.rangos = [];
+        w.ultima_pag = null; w.ultimo_ts = 0;
+      }
+    }
+  }
+  if (ev.tipo === "job_inicio"){
+    S.ocr = {}; S.ocrTotal = 0; S.ultimaOcr = null; pintarCajas([]);
+    if (S.trab){ S.trab.workers = []; S.trab.recientes = []; S.trab.pdf = ""; }
+  }
   /* Lectura SECUENCIAL: cada franja de la hoja llega por separado y se va
      apilando en el visor; la franja se dibuja encima de la miniatura. */
   if (ev.tipo === "ocr_banda"){
@@ -2096,6 +2145,7 @@ function anotarEvento(ev, silencioso){
     if (ev.pdf) S.docActual = ev.pdf;
     S.ocr = S.ocr || {};
     S.ocr[ev.pag] = {pag: ev.pag, sn: ev.sn || "", ms: ev.ms_pagina, worker: ev.detalle || "",
+                      slot: ev.slot, pid: ev.pid, ts: ev.ts || Date.now() / 1000,
                       texto: ev.texto || "", cajas: cajasDe(ev), parcial: !!ev.parcial,
                       estado: ev.estado || "", pdf: ev.pdf || S.docActual};
     if (ev.pag_total) S.ocrTotal = Math.max(S.ocrTotal || 0, ev.pag_total);
@@ -2129,6 +2179,80 @@ function anotarEvento(ev, silencioso){
   $("log-info").textContent = "último evento #" + ev.id;
 }
 function limpiarLog(){ $("log").innerHTML = ""; }
+
+/* Tarjetas de los workers OCR (slots estables 0,1). Usan S.trab para la
+   identidad y S.ocr para el avance del documento actual, sin mezclar PDFs. */
+function pintarWorkers(){
+  const cont = $("workers");
+  if (!cont) return;
+  const base = (S.trab && S.trab.workers) || [];
+  const porSlot = {};
+  for (const p of Object.values(S.ocr || {})){
+    const slot = (p.slot !== undefined && p.slot !== null && p.slot >= 0) ? p.slot : null;
+    if (slot === null) continue;
+    const w = (porSlot[slot] ||= {slot, paginas: new Set(), rango: "", ultima_pag: 0,
+                                  ultimo_ts: 0, ms_total: 0, eventos: 0});
+    w.paginas.add(p.pag);
+    w.rango = p.worker || w.rango;
+    w.ultima_pag = Math.max(w.ultima_pag || 0, p.pag);
+    w.ultimo_ts = Math.max(w.ultimo_ts, p.ts || 0);
+    w.ms_total += p.ms || 0;
+    w.eventos++;
+  }
+  const lista = base.length ? base : Object.values(porSlot);
+  if (!lista.length){
+    cont.innerHTML = `<div class="worker-vacio">Sin lectores en curso.</div>`;
+    return;
+  }
+  const nota = $("workers-nota");
+  if (nota){
+    const programados = (S.trab && S.trab.programados) || lista.length;
+    const totalDoc = S.ocrTotal || S.pagTotalDoc || 0;
+    const n = totalDoc ? Math.min(programados, totalDoc) : programados;
+    const doc = (S.trab && S.trab.pdf) ? `documento ${S.trab.pdf} · ` : "";
+    nota.textContent = `${n} en paralelo · ${doc}rangos sin solape`;
+  }
+  const ahora = Date.now() / 1000;
+  const enCurso = !!S.actual;
+  const esBase = base.length > 0;
+  cont.innerHTML = lista.map((b, i) => {
+    const slot = (b.slot !== undefined && b.slot !== null) ? b.slot : i;
+    const actual = porSlot[slot];
+    const rangoStr = (actual && actual.rango) || (b.rangos && b.rangos[0]) || b.worker || "";
+    const m = /^(\d+)-(\d+)$/.exec(rangoStr);
+    const totalRango = m ? Math.max(0, Number(m[2]) - Number(m[1])) : (b.rango || 0);
+    /* Con el job terminado manda el resumen del último PDF (base); en vivo,
+       el documento actual que se va llenando en S.ocr. */
+    const usarBase = esBase && !enCurso && b.paginas != null;
+    const total = usarBase ? (b.rango || totalRango) : totalRango;
+    const paginas = usarBase ? (b.paginas || 0) : (actual ? actual.paginas.size : 0);
+    const pct = total ? Math.min(100, Math.round(paginas / total * 100)) : 0;
+    const ultima = usarBase ? b.ultima_pag : (actual ? actual.ultima_pag : null);
+    const ultimoTs = usarBase ? (b.ultimo_ts || 0) : (actual ? actual.ultimo_ts : 0);
+    const msTotal = usarBase ? (b.ms_total || 0) : (actual ? actual.ms_total : 0);
+    const eventos = usarBase ? (b.eventos || 0) : (actual ? actual.eventos : 0);
+    const media = eventos ? (msTotal / eventos / 1000) : 0;
+    const completo = total > 0 && paginas >= total;
+    const activo = enCurso && !completo && ultimoTs && (ahora - ultimoTs < 25);
+    const estado = completo ? "completo"
+      : (activo ? "activo"
+      : (enCurso ? (actual ? "sin lectura reciente" : "esperando 1.ª hoja") : "—"));
+    const rangos = ((actual && actual.rango)
+      ? [actual.rango]
+      : ((b.rangos && b.rangos.length) ? b.rangos : [rangoStr]))
+      .filter(Boolean).map(formatearRango).join(" · ");
+    return `<div class="worker-card${activo ? " activo" : ""}${completo ? " completo" : ""}">
+      <div class="worker-cab"><b>Worker ${slot + 1}</b><span class="worker-estado">${estado}</span></div>
+      <div class="worker-num"><b>${paginas}</b><span>de ${total || "?"} páginas</span></div>
+      <div class="barra"><div class="relleno" style="transform:scaleX(${pct/100})"></div></div>
+      <div class="worker-pie">
+        <span>rango ${rangos || "—"}</span>
+        <span>${ultima ? "última pág. " + ultima : "sin lecturas"}</span>
+        ${media ? `<span>${media.toFixed(1)} s/pág</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
 
 /* ---------------- 3 · progreso ---------------- */
 function pintarProgreso(){
@@ -2236,32 +2360,7 @@ function pintarProgreso(){
 
   const r = S.resumen || {};
 
-  /* Una pastilla por worker OCR: páginas hechas, ritmo y último serial visto.
-     Es la vista "de cada una" sin llenar el panel de información. */
-  const contW = $("workers");
-  if (contW){
-    contW.innerHTML = "";
-    const porWorker = {};
-    for (const p of Object.values(S.ocr || {})){
-      const w = (p.worker || "worker ?").replace("worker ", "w");
-      const o = (porWorker[w] ||= {hechas: 0, ms: [], sn: "", rango: 0});
-      o.hechas++; if (p.ms) o.ms.push(p.ms); if (p.sn) o.sn = p.sn;
-      const m = /w(\d+)-(\d+)/.exec(w);
-      if (m) o.rango = Math.max(o.rango, parseInt(m[2], 10) - parseInt(m[1], 10));
-    }
-    for (const [w, o] of Object.entries(porWorker)){
-      const media = o.ms.length ? o.ms.reduce((a, b) => a + b, 0) / o.ms.length : 0;
-      const d = document.createElement("div");
-      const pct = o.rango ? Math.min(1, o.hechas / o.rango) : 0;
-      d.className = "wrk" + (enCurso && pct < 1 ? " activo" : "");
-      d.innerHTML = `<span>${esc(w)}</span>
-        <span class="mini"><i style="transform:scaleX(${pct})"></i></span>
-        <span><b>${o.hechas}</b>${o.rango ? "/" + o.rango : ""} pág</span>
-        ${media ? `<span>${(media / 1000).toFixed(1)} s/pág</span>` : ""}
-        ${o.sn ? `<span class="sn">sn~${esc(o.sn)}</span>` : ""}`;
-      contW.appendChild(d);
-    }
-  }
+  pintarWorkers();
 
   const ch = $("chips-sede"); ch.innerHTML = "";
   for (const [sede, n2] of Object.entries(r.por_sede || {}).sort((a,b) => b[1]-a[1])){
@@ -2335,6 +2434,7 @@ function conectarSSE(){
     S.ultimoEventoId = 0;
     limpiarLog();
     S.paginas = []; S.docActual = null; S.pagTotalDoc = 0; S.ultima = null;
+    S.ocr = {}; S.ocrTotal = 0; S.ultimaOcr = null; S.bandas = {};
     aplicarSnapshot(snap);
     $("c-conexion").textContent = "conectado";
   });
