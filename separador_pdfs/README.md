@@ -18,16 +18,19 @@ Todo corre en local. No requiere servicios en la nube ni credenciales de tercero
 
 El panel tiene dos vistas conmutables y recuerda la ultima usada.
 
-**Vista simple (por defecto)** es la de uso diario: tres pestanas con lo
-indispensable.
+**Vista simple (por defecto)** es la de uso diario: un flujo de tres pasos, sin
+pestanas ni metricas tecnicas.
 
-- **Documentos**: arrastrar PDFs, lista de archivos y un boton para procesar.
-- **Progreso**: la hoja que se esta leyendo, la tira de paginas, la barra del
-  trabajo y, al terminar, el resumen con la ruta de los resultados.
-- **Resultados**: buscar y descargar.
+1. **Documentos**: arrastrar PDFs, ver que hay y pulsar el boton principal. Si el
+   panel esta en modo prueba, un aviso lo explica y ofrece procesar de verdad.
+2. **Procesando**: que documento se esta leyendo, pagina actual, miniatura y datos
+   detectados (serial, sede), una sola barra de avance y la tira de paginas. Al
+   terminar, una tarjeta con el resumen y el acceso a resultados.
+3. **Resultados**: resumen de la ultima corrida (equipos listos, por revisar y
+   sedes), descarga de todo en ZIP y el historial de corridas plegado.
 
-**Vista completa** anade la parte tecnica: cola de trabajo, log en vivo, metricas,
-historial de workers, ficha del sistema e inventario de seriales editable.
+**Vista completa** anade la parte tecnica: pestanas, cola de trabajo, log en vivo,
+metricas, historial de workers, ficha del sistema e inventario de seriales editable.
 
 ## Visor de hojas
 

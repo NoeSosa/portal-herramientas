@@ -145,3 +145,29 @@ no mueve dinero: eso sigue siendo conversación con el agente.
   al log del contenedor.
 - Un resultado negativo no es un error de servidor: "no hay coincidencia" es
   **422**, no 500. La interfaz lo pinta distinto (ámbar vs. rojo).
+
+### Panel del separador: flujo de 3 pasos
+
+La vista simple del panel no usa pestañas: usa un flujo **Documentos →
+Procesando → Resultados**. Es la misma lógica de "qué hago ahora" que un
+formulario por pasos, aplicada a un trabajo que dura minutos.
+
+Reglas que se aplicaron al rediseñarlo:
+
+- **Un solo paso activo.** La barra de pasos marca dónde está el usuario y
+  resume el estado de cada paso en una línea ("2 PDFs listos", "Página 8 de 17",
+  "32 listos · 2 por revisar"). No hace falta abrir nada para saber cómo va.
+- **Una acción principal por pantalla.** Documentos tiene "Procesar"; el cierre
+  de la corrida tiene "Ver resultados" y "Descargar ZIP". Todo lo demás es
+  secundario o vive en la vista completa.
+- **El modo prueba se dice, no se esconde.** Si `dry_default` está activo, un
+  aviso lo explica y ofrece "Procesar de verdad"; el botón principal no finge
+  que está procesando de verdad.
+- **Los datos importantes no se ocultan.** Miniatura + documento, página,
+  serial y sede quedan visibles; el texto OCR crudo, las métricas y la cola son
+  de la vista completa.
+- **Resumen antes que listado.** Resultados muestra primero los contadores de la
+  última corrida y la descarga completa; el historial de archivos queda plegado.
+- **Nada de nombres internos en la vista simple.** `job`, `worker`, `OCR`,
+  `dry`, `pipeline` y las rutas absolutas se sustituyen por "proceso", "lectura
+  de páginas", "modo prueba" y fechas legibles.

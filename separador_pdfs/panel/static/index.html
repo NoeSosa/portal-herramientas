@@ -164,8 +164,14 @@ tbody tr{transition:background-color var(--t-micro) var(--ease)}
 tbody tr:hover{background-color:var(--panel-alto)}
 .num{font-family:var(--font-mono);color:var(--tinta-apagada);font-variant-numeric:tabular-nums}
 
+/* La tabla de documentos no reparte el ancho a partes iguales: el nombre manda
+   y las columnas de dato quedan compactas a la derecha. */
+#t-entrada th:nth-child(3),#t-entrada td:nth-child(3){width:120px}
+#t-entrada th:nth-child(6),#t-entrada td:nth-child(6){width:110px}
+
 .vac{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
      color:var(--tinta-apagada);padding:8px 2px}
+.pista{margin:10px 0 0;font-size:12px;line-height:1.55;color:var(--tinta-apagada);max-width:80ch}
 
 /* Zona de arrastre: borde discontinuo que se enciende con el acento. */
 .zonasub{display:flex;align-items:center;gap:8px;padding:10px;margin-bottom:10px;
@@ -192,7 +198,9 @@ tbody tr:hover{background-color:var(--panel-alto)}
    Rejilla de páginas: cada hoja es un mini-panel; la activa barre con un
    gradiente que se desplaza (translate, lineal) — el "sliding" del playbook.
    -------------------------------------------------------------------------- */
-.paginas{display:grid;grid-template-columns:repeat(auto-fill,minmax(32px,1fr));gap:4px;margin:12px 0 6px}
+.etiqueta-paginas{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;
+                  text-transform:uppercase;color:var(--tinta-apagada);margin:10px 0 4px}
+.paginas{display:grid;grid-template-columns:repeat(auto-fill,minmax(32px,1fr));gap:4px;margin:0 0 6px}
 .hoja{position:relative;height:32px;background-color:var(--fondo);border:1px solid var(--linea);
       display:flex;align-items:center;justify-content:center;
       font-family:var(--font-mono);font-size:10.5px;color:var(--tinta-apagada);
@@ -421,14 +429,127 @@ body.con-modal{overflow:hidden}
    -------------------------------------------------------------------------- */
 body.vista-simple [data-avanzado]{display:none !important}
 body.vista-simple .tab[data-solo-completa]{display:none}
-.ayuda{margin:0 0 12px;padding:8px 11px;border-left:2px solid var(--acento);
-       background-color:oklch(0.2 0.01 260 / .5);font-family:var(--font-mono);
-       font-size:11.5px;line-height:1.5;color:var(--tinta-tenue)}
-.ayuda b{color:var(--acento);font-weight:500}
-body.vista-completa .ayuda{display:none}
-/* En la vista simple la hoja del visor manda: se le da algo más de aire. */
-body.vista-simple .visor{grid-template-columns:minmax(0,190px) minmax(0,1fr)}
-body.vista-simple .visor > .lectura,body.vista-simple .visor > .datos-vivos{display:none}
+/* En la simple: miniatura + datos del documento; el texto OCR crudo se oculta. */
+body.vista-simple .visor{grid-template-columns:minmax(0,220px) minmax(0,1fr)}
+body.vista-simple .visor > .lectura{display:none}
+body.vista-simple .datos-vivos{grid-column:2;grid-row:1;align-self:start;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+
+/* --------------------------------------------------------------------------
+   Flujo de 3 pasos (vista simple)
+   Reemplaza a las pestañas, que en la simple desaparecen. Cada paso resume el
+   estado en lenguaje llano: qué hay, cómo va y qué se puede descargar.
+   -------------------------------------------------------------------------- */
+.flujo{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+       background-color:var(--linea);border:1px solid var(--linea);margin:0 0 14px}
+.paso{display:flex;align-items:flex-start;gap:10px;text-align:left;
+      background-color:var(--panel);border:0;border-radius:0;padding:10px 12px;min-width:0;
+      transition:background-color var(--t-micro) var(--ease)}
+.paso:hover:not(.activo){background-color:var(--panel-alto);border-color:transparent;
+                         color:var(--tinta)}
+.paso .n{flex:none;width:24px;height:24px;display:grid;place-items:center;
+         border:1px solid var(--linea);font-family:var(--font-mono);font-size:11px;
+         line-height:1;color:var(--tinta-apagada)}
+.paso .tx{display:flex;flex-direction:column;gap:2px;min-width:0}
+.paso .t{font-family:var(--font-sans);font-size:13px;font-weight:500;line-height:1.2;
+         text-transform:none;letter-spacing:0;color:var(--tinta)}
+.paso .d{font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;
+         text-transform:uppercase;color:var(--tinta-apagada);
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.paso.completo .n{border-color:var(--ok);color:var(--ok)}
+.paso.completo .d{color:var(--ok)}
+/* El paso activo manda sobre el completado: el número se queda en ámbar. */
+.paso.activo{background-color:var(--panel-alto);box-shadow:inset 3px 0 0 var(--acento)}
+.paso.activo .n{border-color:var(--acento);color:var(--acento)}
+@media(max-width:640px){
+  .flujo{grid-template-columns:1fr}
+  .paso .d{white-space:normal}
+  body.vista-simple .datos-vivos{grid-column:1;grid-row:auto}
+  #t-entrada th:nth-child(3),#t-entrada td:nth-child(3){width:72px}
+  #t-entrada th:nth-child(6),#t-entrada td:nth-child(6){width:86px}
+  #t-entrada td:nth-child(2){overflow-wrap:anywhere}
+}
+body.vista-simple .tabs{display:none}
+body.vista-completa .flujo{display:none}
+
+/* Aviso de modo prueba: el panel lee pero no mueve archivos. */
+.aviso-prueba{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+  justify-content:space-between;padding:8px 10px;margin:0 0 10px;
+  border:1px solid var(--aviso);border-left:3px solid var(--aviso);
+  background-color:oklch(0.2 0.02 85 / .28)}
+.aviso-prueba[hidden]{display:none}
+.aviso-prueba > div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.aviso-prueba b{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;
+                text-transform:uppercase;color:var(--aviso)}
+.aviso-prueba span{font-size:12px;color:var(--tinta-tenue)}
+
+/* Acción principal de Documentos: qué hay y qué se puede hacer. */
+.accion-principal{display:flex;flex-wrap:wrap;gap:12px;align-items:center;
+  justify-content:space-between;padding:10px 12px;margin:0 0 10px;
+  border:1px solid var(--linea);background-color:var(--fondo)}
+.accion-principal .resumen{display:flex;flex-direction:column;gap:2px;min-width:0}
+.accion-principal .resumen b{font-family:var(--font-sans);font-size:15px;font-weight:500;
+                             color:var(--tinta)}
+.accion-principal .resumen span{font-family:var(--font-mono);font-size:10.5px;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--tinta-apagada)}
+button.grande{padding:11px 16px;font-size:12px}
+
+/* Titular legible de Progreso (sustituye a la línea técnica en la simple). */
+.prog-grande{font-family:var(--font-sans);font-size:22px;font-weight:500;line-height:1.2;
+             margin:0 0 4px;color:var(--tinta)}
+.prog-sub{margin:0 0 12px;font-size:13px;color:var(--tinta-tenue);max-width:70ch}
+body.vista-simple #prog-titulo{display:none}
+body.vista-completa .prog-grande,body.vista-completa .prog-sub{display:none}
+
+/* Leyenda de la tira de páginas: explica los colores sin tecnicismos. */
+.leyenda-paginas{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:6px 0 2px;
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.04em;color:var(--tinta-apagada)}
+.leyenda-paginas span{display:inline-flex;align-items:center;gap:5px}
+.leyenda-paginas i{display:inline-block;width:9px;height:9px;border:1px solid var(--linea)}
+.leyenda-paginas i.ok{border-color:var(--ok)}
+.leyenda-paginas i.aviso{border-color:var(--aviso)}
+.leyenda-paginas i.act{border-color:var(--acento);background-color:oklch(0.2 0.02 78)}
+.leyenda-paginas[hidden]{display:none}
+
+/* Resumen de la última corrida: lo primero que se ve en Resultados. */
+.resumen-corrida{display:flex;flex-wrap:wrap;gap:16px;align-items:center;
+  justify-content:space-between;padding:10px 12px;margin:0 0 10px;
+  border:1px solid var(--linea);background-color:var(--fondo)}
+.resumen-corrida[hidden]{display:none}
+.resumen-corrida .cifras{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end}
+.resumen-corrida .cifra{display:flex;flex-direction:column;gap:1px;min-width:70px}
+.resumen-corrida .cifra b{font-family:var(--font-mono);font-size:20px;font-weight:500;
+                          line-height:1.1;color:var(--tinta)}
+.resumen-corrida .cifra .et{font-family:var(--font-mono);font-size:9.5px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--tinta-apagada)}
+.resumen-corrida .cifra.ok b{color:var(--ok)}
+.resumen-corrida .cifra.aviso b{color:var(--aviso)}
+.resumen-corrida .cifra.corrida b{font-size:12px;color:var(--tinta-tenue)}
+
+/* Historial de corridas: plegado por defecto en la vista simple. */
+.historial{border:1px solid var(--linea);background-color:var(--fondo);margin-top:10px}
+.historial[hidden]{display:none}
+.historial > summary{cursor:pointer;padding:8px 10px;font-family:var(--font-mono);
+  font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--tinta-apagada)}
+.historial[open] > summary{border-bottom:1px solid var(--linea);color:var(--tinta)}
+.historial > summary:hover{color:var(--acento)}
+.historial #lista-resultados{padding:8px}
+
+/* Sedes plegables: el resumen arriba, los archivos solo si se abren. */
+.sede{border-top:1px solid var(--linea);padding:0}
+.sede > summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;
+  flex-wrap:wrap;padding:9px 10px;font-family:var(--font-mono);font-size:11.5px;
+  letter-spacing:.04em;color:var(--tinta);transition:background-color var(--t-micro) var(--ease)}
+.sede > summary::-webkit-details-marker{display:none}
+.sede > summary::before{content:"▸";color:var(--tinta-apagada);font-size:10px}
+.sede[open] > summary::before{content:"▾";color:var(--acento)}
+.sede > summary:hover{background-color:var(--panel-alto)}
+.sede > summary b{font-weight:500;color:var(--tinta)}
+.sede .sede-cuerpo{padding:0 10px 9px}
+a.mini{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--tinta-tenue);background-color:var(--panel-alto);
+  border:1px solid var(--linea);border-radius:var(--r);padding:4px 8px}
+a.mini:hover{border-color:var(--acento);color:var(--acento);text-decoration:none}
 
 .hoja.clic{cursor:pointer}
 /* Hoja ya leída por el OCR pero aún sin clasificar (progreso real, no el final) */
@@ -550,15 +671,26 @@ body.embebido .app{padding:10px 12px 24px}
     </div>
   </div>
 
-  <!-- Ayuda de una línea: qué hace el panel y qué se espera del usuario. -->
-  <p class="ayuda" id="ayuda">
-    <b>1</b> sube tus PDFs a <b>Documentos</b> · <b>2</b> pulsa <b>Procesar</b> ·
-    <b>3</b> al terminar descárgalos en <b>Resultados</b>.
-  </p>
+  <!-- Flujo de 3 pasos: es la navegación de la vista simple. En la completa se
+       oculta y mandan las pestañas técnicas. -->
+  <nav class="flujo" aria-label="Pasos del proceso">
+    <button class="paso" type="button" data-paso="entrada" onclick="mostrarPestana('entrada')">
+      <span class="n">1</span>
+      <span class="tx"><span class="t">Documentos</span><span class="d">Sube tus PDFs</span></span>
+    </button>
+    <button class="paso" type="button" data-paso="cola" onclick="mostrarPestana('cola')">
+      <span class="n">2</span>
+      <span class="tx"><span class="t">Procesando</span><span class="d">Sin proceso</span></span>
+    </button>
+    <button class="paso" type="button" data-paso="resultados" onclick="mostrarPestana('resultados')">
+      <span class="n">3</span>
+      <span class="tx"><span class="t">Resultados</span><span class="d">Sin resultados</span></span>
+    </button>
+  </nav>
 
   <nav class="tabs" role="tablist" aria-label="Secciones del panel">
     <button class="tab" role="tab" id="tab-entrada" aria-controls="vista-entrada" aria-selected="true" tabindex="0">01 · Documentos <span class="tab-badge cero" id="b-entrada">0</span></button>
-    <button class="tab" role="tab" id="tab-cola" aria-controls="vista-cola" aria-selected="false" tabindex="-1">02 · Progreso <span class="tab-badge cero" id="b-cola">0</span></button>
+    <button class="tab" role="tab" id="tab-cola" aria-controls="vista-cola" aria-selected="false" tabindex="-1">02 · Procesando <span class="tab-badge cero" id="b-cola">0</span></button>
     <button class="tab" role="tab" id="tab-resultados" aria-controls="vista-resultados" aria-selected="false" tabindex="-1">03 · Resultados <span class="tab-badge cero" id="b-resultados">0</span></button>
     <button class="tab" role="tab" id="tab-sistema" aria-controls="vista-sistema" aria-selected="false" tabindex="-1" data-solo-completa="1">04 · Sistema</button>
     <button class="tab" role="tab" id="tab-seriales" aria-controls="vista-seriales" aria-selected="false" tabindex="-1" data-solo-completa="1">05 · Seriales <span class="tab-badge cero" id="b-seriales">0</span></button>
@@ -568,18 +700,34 @@ body.embebido .app{padding:10px 12px 24px}
     <section role="tabpanel" id="vista-entrada" aria-labelledby="tab-entrada" tabindex="0">
     <!-- 1 · ENTRADA LOCAL -->
     <div class="caja ancha">
-      <h2>Archivos por procesar</h2>
-      <div class="fila-botones">
-        <button data-avanzado="1" onclick="cargarEntrada()">Refrescar</button>
-        <button class="primario" id="btn-procesar-sel" data-avanzado="1" onclick="procesarSeleccion()">Procesar seleccionados</button>
-        <button class="primario" id="btn-procesar-todo" onclick="dispararTodo()">Disparar con toda la entrada</button>
+      <h2>Documentos</h2>
+
+      <div class="aviso-prueba" id="aviso-prueba" hidden>
+        <div>
+          <b>Modo prueba</b>
+          <span>El panel leerá y separará los PDFs, pero no moverá los archivos a procesados.</span>
+        </div>
+        <button class="primario" type="button" onclick="dispararTodo(false)">Procesar de verdad</button>
+      </div>
+
+      <div class="zonasub" id="zona-subida">
+        Arrastra tus PDFs aquí · <button class="mini" type="button" onclick="document.getElementById('file').click()">elegir archivos</button>
+        <input type="file" id="file" multiple accept="application/pdf" style="display:none">
+      </div>
+
+      <div class="accion-principal">
+        <div class="resumen">
+          <b id="entrada-titulo">Sin documentos todavía</b>
+          <span id="entrada-info">—</span>
+        </div>
+        <button class="primario grande" id="btn-procesar-todo" type="button" onclick="dispararTodo()">Procesar ahora</button>
+      </div>
+
+      <div class="fila-botones" data-avanzado="1">
+        <button onclick="cargarEntrada()">Refrescar</button>
+        <button class="primario" id="btn-procesar-sel" onclick="procesarSeleccion()">Procesar seleccionados</button>
         <label class="dry"><input type="checkbox" id="chk-dry" checked>
           <span id="dry-txt">simulación (<code>--dry</code>: no mueve a procesados ni envía correo)</span></label>
-        <span class="num" id="entrada-info"></span>
-      </div>
-      <div class="zonasub" id="zona-subida">
-        Arrastra PDFs aquí (van a <code>entrada_local/</code>) · <button class="mini" onclick="document.getElementById('file').click()">elegir archivos</button>
-        <input type="file" id="file" multiple accept="application/pdf" style="display:none">
       </div>
       <div class="filtros" data-avanzado="1">
         <input type="search" id="f-entrada-q" placeholder="filtrar archivos…" oninput="pintarEntrada()">
@@ -592,10 +740,11 @@ body.embebido .app{padding:10px 12px 24px}
       </div>
       <table id="t-entrada">
         <thead><tr><th style="width:26px" data-avanzado="1"><input type="checkbox" id="chk-todos" onchange="toggleTodos(this)"></th>
-          <th>Archivo</th><th>Peso</th><th data-avanzado="1">Páginas</th><th data-avanzado="1">Modificado</th><th>Estado</th><th></th></tr></thead>
+          <th>Archivo</th><th>Peso</th><th data-avanzado="1">Páginas</th><th data-avanzado="1">Modificado</th><th>Estado</th><th data-avanzado="1"></th></tr></thead>
         <tbody></tbody>
       </table>
-      <div class="vac" id="entrada-vac">Sin datos todavía.</div>
+      <div class="vac" id="entrada-vac">Sube tu primer PDF para empezar.</div>
+      <p class="pista">Al procesar, el panel lee cada página, detecta el número de serie y separa los equipos por sede. Puedes cerrar esta pestaña: el trabajo continúa en el servidor.</p>
       <details id="det-procesados" style="margin-top:8px" data-avanzado="1">
         <summary class="num" style="cursor:pointer">procesados/ (<span id="proc-n">0</span> archivos)</summary>
         <div id="lista-procesados" style="margin-top:6px"></div>
@@ -609,6 +758,8 @@ body.embebido .app{padding:10px 12px 24px}
     <div class="caja ancha" id="caja-progreso">
       <h2>Progreso en vivo</h2>
       <div class="num" id="prog-titulo">Sin job en curso.</div>
+      <h3 class="prog-grande" id="prog-grande">Sin proceso en curso</h3>
+      <p class="prog-sub" id="prog-sub">Sube tus PDFs en Documentos y pulsa Procesar.</p>
 
       <div class="visor" id="visor">
         <div class="hoja-viva">
@@ -626,7 +777,7 @@ body.embebido .app{padding:10px 12px 24px}
             <span class="parcial" id="v-parcial" hidden>parcial · solo SN</span></span>
           <div class="texto-ocr" id="v-lectura">esperando la primera hoja…</div>
         </div>
-        <div class="datos-vivos" data-avanzado="1">
+        <div class="datos-vivos">
           <div><span class="et">documento</span><span id="v-pdf">—</span></div>
           <div><span class="et">página</span><span id="v-pag">—</span></div>
           <div><span class="et">serial</span><span id="v-sn">—</span></div>
@@ -635,10 +786,9 @@ body.embebido .app{padding:10px 12px 24px}
           <div><span class="et">estado</span><span id="v-estado">—</span></div>
         </div>
       </div>
-      <div class="paginas" id="paginas"></div>
-      <div class="barrafila" data-avanzado="1"><span class="num" style="width:84px">documento</span>
+      <div class="barrafila"><span class="num" style="width:84px">avance</span>
         <div class="barra"><div class="relleno" id="b-doc"></div></div><span class="num" id="b-doc-t">0%</span></div>
-      <div class="barrafila"><span class="num" style="width:84px">job completo</span>
+      <div class="barrafila" data-avanzado="1"><span class="num" style="width:84px">job completo</span>
         <div class="barra"><div class="relleno" id="b-job"></div></div><span class="num" id="b-job-t">0%</span></div>
       <div class="metricas" data-avanzado="1">
         <div class="metrica"><div class="k">página</div><div class="v" id="m-pag">—</div></div>
@@ -659,13 +809,22 @@ body.embebido .app{padding:10px 12px 24px}
           <span class="num" id="fin-cuando"></span>
         </div>
         <div class="fin-datos" id="fin-datos"></div>
-        <div class="fin-ruta"><span class="et">resultados en</span>
+        <div class="fin-ruta" data-avanzado="1"><span class="et">resultados en</span>
           <code id="fin-ruta">—</code></div>
         <div class="fila-botones" style="margin:8px 0 0">
           <button onclick="irAResultados()">ver resultados</button>
           <button class="mini" onclick="zipUltima()">descargar ZIP de la corrida</button>
-          <button class="mini" onclick="abrirVisor()">ver última hoja en grande</button>
+          <button class="mini" data-avanzado="1" onclick="abrirVisor()">ver última hoja en grande</button>
         </div>
+      </div>
+
+      <div class="etiqueta-paginas" id="etiqueta-paginas">Páginas del documento</div>
+      <div class="paginas" id="paginas"></div>
+      <div class="leyenda-paginas">
+        <span><i class="ok"></i>lista</span>
+        <span><i class="aviso"></i>por revisar</span>
+        <span><i class="act"></i>leyendo</span>
+        <span><i></i>pendiente</span>
       </div>
     </div>
 
@@ -707,13 +866,24 @@ body.embebido .app{padding:10px 12px 24px}
     <section role="tabpanel" id="vista-resultados" aria-labelledby="tab-resultados" tabindex="0" hidden>
     <!-- 4 · RESULTADOS -->
     <div class="caja ancha">
-      <h2>Resultados (descargar desde aquí)</h2>
-      <div class="fila-botones">
+      <h2>Resultados</h2>
+      <div class="fila-botones" data-avanzado="1">
         <button onclick="cargarResultados()">Refrescar resultados</button>
-        <button class="mini" data-avanzado="1" onclick="limpiar('corridas', 2)">Borrar corridas viejas (conservar 2)</button>
-        <button class="mini peligro" data-avanzado="1" onclick="limpiar('todas')">Borrar todas las corridas</button>
+        <button class="mini" onclick="limpiar('corridas', 2)">Borrar corridas viejas (conservar 2)</button>
+        <button class="mini peligro" onclick="limpiar('todas')">Borrar todas las corridas</button>
         <span class="num" id="espacio-info">—</span>
       </div>
+
+      <div class="resumen-corrida" id="resumen-corrida" hidden>
+        <div class="cifras">
+          <div class="cifra corrida"><span class="et">última corrida</span><b id="res-corrida">—</b></div>
+          <div class="cifra ok"><b id="res-ok">0</b><span class="et">equipos listos</span></div>
+          <div class="cifra aviso"><b id="res-rev">0</b><span class="et">por revisar</span></div>
+          <div class="cifra"><b id="res-sedes">0</b><span class="et">sedes</span></div>
+        </div>
+        <button class="primario" type="button" onclick="zipResumen()">Descargar todo (ZIP)</button>
+      </div>
+
       <div class="filtros">
         <select id="f-res-corrida" data-avanzado="1" onchange="pintarResultados()"><option value="">todas las corridas</option></select>
         <input type="search" id="f-res-q" placeholder="buscar por sede o archivo…" oninput="pintarResultados()">
@@ -721,8 +891,11 @@ body.embebido .app{padding:10px 12px 24px}
       </div>
       <div class="barra" style="height:12px" data-avanzado="1"><div class="relleno" id="b-disco"></div></div>
       <div class="num" id="espacio-detalle" data-avanzado="1" style="font-size:11.5px;margin-top:5px"></div>
-      <div id="resultados"></div>
       <div class="vac" id="resultados-vac">Sin corridas todavía.</div>
+      <details class="historial" id="historial-resultados">
+        <summary id="historial-titulo">Ver corridas anteriores</summary>
+        <div id="lista-resultados"></div>
+      </details>
     </div>
 
     </section>
@@ -864,7 +1037,8 @@ const S = {
   ocr: {}, ocrTotal: 0, ultimaOcr: null,
   trab: {workers: [], recientes: []},
   modal: false, mSeguir: true, mHoja: null,
-  modo: "local", espacio: {}, resultados: [], entradaRuta: "", seriales: { total: 0, limite: 100, offset: 0 },
+  modo: "local", dryDefault: true, espacio: {}, resultados: [], entradaRuta: "",
+  seriales: { total: 0, limite: 100, offset: 0 },
 };
 /* Base de la API: si el panel se sirve detrás del portal de herramientas
    (http://127.0.0.1:8080/panel/) las rutas viven en /api/panel/. */
@@ -878,6 +1052,13 @@ const mmss = (s) => {
   s = Math.max(0, Math.round(s));
   const m = Math.floor(s/60), r = s%60;
   return m ? `${m}m ${String(r).padStart(2,"0")}s` : `${r}s`;
+};
+const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+/* "Separador_2026-10-18_1719" → "18 oct 2026 · 17:19" (para la vista simple). */
+const fechaCorrida = (c) => {
+  const m = /Separador_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/.exec(c || "");
+  if (!m) return c || "—";
+  return `${Number(m[3])} ${MESES[Number(m[2]) - 1] || ""} ${m[1]} · ${m[4]}:${m[5]}`;
 };
 const q = (o) => Object.entries(o).map(([k,v]) => k+"="+encodeURIComponent(v)).join("&");
 
@@ -894,7 +1075,74 @@ async function accion(url, cuerpo){
 }
 /* Atajos para los botones del HTML: usan la base correcta (API) para que
    funcionen igual servidos solos (127.0.0.1:8791) o dentro del portal (/panel/). */
-function dispararTodo(){ return accion(API + "/disparar"); }
+function dispararTodo(dry){
+  /* En la vista completa manda el checkbox; en la simple, el modo configurado
+     (el aviso de modo prueba ofrece el botón explícito para procesar de verdad). */
+  if (dry === undefined && !esSimple()){
+    const chk = $("chk-dry");
+    if (chk) dry = chk.checked;
+  }
+  return accion(API + "/disparar", dry === undefined ? {} : {dry: !!dry});
+}
+
+/* Estado en lenguaje llano para el flujo de 3 pasos. */
+function estadoLlano(estado){
+  return ({
+    ok: "terminada", error: "con error", cancelado: "cancelada",
+    en_proceso: "en curso", pendiente: "en cola", pausado: "pausada",
+  })[estado] || (estado || "sin estado");
+}
+
+/* Resume el flujo completo en la barra de pasos de la vista simple. */
+function actualizarFlujo(){
+  const activa = pestanaActiva();
+  const pag = (S.ultimaOcr && S.ultimaOcr.pag) || (S.actual && S.actual.pag_hechas) || null;
+  const total = S.ocrTotal || (S.actual && S.actual.pag_total) || 0;
+  const ultima = (S.resultados && S.resultados[0]) || null;
+  const nEnt = S.entradas.length;
+  const datos = {
+    entrada: nEnt
+      ? `${nEnt} PDF${nEnt === 1 ? "" : "s"} listo${nEnt === 1 ? "" : "s"}`
+      : "Sube tus PDFs",
+    cola: S.actual
+      ? (pag ? `Página ${pag}${total ? " de " + total : ""}` : "Preparando…")
+      : (S.ultimoJob ? `Última: ${estadoLlano(S.ultimoJob.estado)}` : "Sin proceso"),
+    resultados: S.actual
+      ? "Esperando a que termine"
+      : (ultima
+          ? `${ultima.n_ok} listos · ${ultima.n_revisar} por revisar`
+          : "Sin resultados"),
+  };
+  const completo = {
+    entrada: S.entradas.length > 0 || !!S.actual || (S.resultados || []).length > 0,
+    cola: !!S.ultimoJob && !S.actual &&
+          ["ok", "error", "cancelado"].includes(S.ultimoJob.estado),
+    resultados: !S.actual && (S.resultados || []).length > 0,
+  };
+  document.querySelectorAll(".paso").forEach((el) => {
+    const id = el.dataset.paso;
+    el.classList.toggle("activo", id === activa);
+    el.classList.toggle("completo", !!completo[id]);
+    if (id === activa) el.setAttribute("aria-current", "step");
+    else el.removeAttribute("aria-current");
+    const d = el.querySelector(".d");
+    if (d && datos[id]) d.textContent = datos[id];
+  });
+}
+
+/* El modo prueba se explica en la vista simple, no se esconde en un checkbox. */
+function pintarAvisoPrueba(){
+  const aviso = $("aviso-prueba");
+  if (aviso) aviso.hidden = !S.dryDefault;
+  const b = $("btn-procesar-todo");
+  if (!b) return;
+  const simple = esSimple();
+  b.textContent = simple
+    ? (S.dryDefault ? "Simular procesamiento" : "Procesar ahora")
+    : "Disparar con toda la entrada";
+  /* En modo prueba el botón real vive en el aviso; el de la fila simula. */
+  b.className = (simple && S.dryDefault) ? "grande" : "primario grande";
+}
 function pausarTodo(){ return accion(API + "/pausar"); }
 function reanudarTodo(){ return accion(API + "/reanudar"); }
 
@@ -936,13 +1184,28 @@ function pintarEntrada(){
          <td>${a.encolado ? '<span class="estado-chip en_proceso">en cola</span>'
                           : (a.es_pdf === false ? '<span class="estado-chip error">no es PDF</span>'
                                                 : '<span class="estado-chip pendiente">nuevo</span>')}</td>
-         <td>${a.es_pdf === false ? "" : `<button class="mini peligro" title="borrar del disco"
+         <td data-avanzado="1">${a.es_pdf === false ? "" : `<button class="mini peligro" title="borrar del disco"
                 onclick="borrarEntrada('${esc(a.Name)}')">Borrar</button>`}</td>`;
     tb.appendChild(tr);
   }
+  const bytes = S.entradas.reduce((total, a) => total + (a.Size || 0), 0);
+  const pendientes = S.entradas.filter((a) => a.es_pdf !== false && !a.encolado).length;
+  const totalDocs = S.entradas.length;
   $("entrada-vac").style.display = lista.length ? "none" : "block";
-  $("entrada-info").textContent = `${lista.length} de ${S.entradas.length} archivo(s)` +
-    (S.entradaRuta ? ` en ${S.entradaRuta}` : "");
+  $("entrada-titulo").textContent = totalDocs
+    ? (totalDocs === 1 ? "1 documento listo" : `${totalDocs} documentos listos`)
+    : "Sin documentos todavía";
+  $("entrada-info").textContent = esSimple()
+    ? (S.entradas.length
+        ? `${kb(bytes)} · ${pendientes} por procesar`
+        : "Arrastra tus PDFs o elige archivos")
+    : `${lista.length} de ${S.entradas.length} archivo(s)` +
+      (S.entradaRuta ? ` en ${S.entradaRuta}` : "");
+  const b = $("btn-procesar-todo");
+  if (b) b.disabled = pendientes === 0;
+  const real = $("aviso-prueba")?.querySelector("button");
+  if (real) real.disabled = pendientes === 0;
+  actualizarFlujo();
 }
 function toggleTodos(chk){
   document.querySelectorAll(".chk-entrada").forEach(c => c.checked = chk.checked);
@@ -1004,7 +1267,7 @@ async function subirArchivos(files){
   cargarEntrada(); cargarEstado(); cargarEspacio();
 }
 function recargarTextoSubida(){
-  $("zona-subida").innerHTML = 'Arrastra PDFs aquí (van a <code>entrada_local/</code>) · ' +
+  $("zona-subida").innerHTML = 'Arrastra tus PDFs aquí · ' +
     '<button class="mini" onclick="document.getElementById(\'file\').click()">elegir archivos</button>' +
     '<input type="file" id="file" multiple accept="application/pdf" style="display:none">';
   conectarInputs();
@@ -1034,56 +1297,88 @@ async function cargarResultados(){
 
 /* Render de resultados con filtros: corrida, texto (sede/archivo) y serial exacto. */
 function pintarResultados(){
-  const cont = $("resultados");
+  const cont = $("lista-resultados");
   cont.innerHTML = "";
   const fCorrida = $("f-res-corrida")?.value || "";
   const fq = ($("f-res-q")?.value || "").toLowerCase().trim();
   const fSer = ($("f-res-serial")?.value || "").toLowerCase().trim();
   let pintadas = 0;
   for (const c of S.resultados){
-      const det = document.createElement("details");
-      det.className = "corrida";
-      const sedes = c.sedes || [];
-      let inner = `<summary><b>${esc(c.corrida)}</b>
-        <span class="chip ok">${c.n_ok} OK</span>
-        <span class="chip aviso">${c.n_revisar} a revisar</span>
-        <span class="tam">${kb(c.bytes)}</span>
-        <span class="tam">${esc(c.ModTime)}</span>
-        <span style="margin-left:auto"></span>
-        <a class="mini" href="${API}/zip?${q({corrida:c.corrida})}" title="ZIP de toda la corrida">↓ ZIP corrida</a>
-        <button class="mini peligro" onclick="event.preventDefault();limpiar('corrida','${esc(c.corrida)}')">Borrar corrida</button>
-        </summary>`;
-      for (const s of sedes){
-        inner += `<div class="sede"><h4>${esc(s.sede)}
-          <span class="tam">${s.n_ok} OK · ${s.n_revisar} a revisar · ${kb(s.bytes)}</span>
-          <a class="mini" href="${API}/zip?${q({corrida:c.corrida, sede:s.sede})}">↓ ZIP sede</a></h4>`;
-        for (const carpeta of ["EQUIPOS_OK","A_REVISAR"]){
-          const archs = (s.carpetas || {})[carpeta] || [];
-          if (!archs.length) continue;
-          inner += `<div class="grupo">${carpeta} (${archs.length})</div>`;
-          for (const a of archs){
-            const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, carpeta, archivo:a.Name});
-            inner += `<div class="arch"><a href="${url}">↓ ${esc(a.Name)}</a><span class="tam">${kb(a.Size)}</span></div>`;
-          }
+    const det = document.createElement("details");
+    det.className = "corrida";
+    const sedes = c.sedes || [];
+    const nSedes = sedes.length === 1 ? "1 sede" : `${sedes.length} sedes`;
+    let inner = `<summary><b>${esc(c.corrida)}</b>
+      <span class="chip ok">${c.n_ok} listos</span>
+      <span class="chip aviso">${c.n_revisar} por revisar</span>
+      <span class="tam">${nSedes} · ${kb(c.bytes)}</span>
+      <span class="tam">${esc(c.ModTime)}</span>
+      <span style="margin-left:auto"></span>
+      <a class="mini" href="${API}/zip?${q({corrida:c.corrida})}" title="ZIP de toda la corrida"
+         onclick="event.stopPropagation()">↓ Descargar todo</a>
+      <button class="mini peligro" data-avanzado="1"
+        onclick="event.preventDefault();event.stopPropagation();limpiar('corrida','${esc(c.corrida)}')">Borrar corrida</button>
+      </summary>`;
+    for (const s of sedes){
+      inner += `<details class="sede"><summary><b>${esc(s.sede)}</b>
+        <span class="tam">${s.n_ok} listos · ${s.n_revisar} por revisar · ${kb(s.bytes)}</span>
+        <a class="mini" href="${API}/zip?${q({corrida:c.corrida, sede:s.sede})}"
+           onclick="event.stopPropagation()">↓ ZIP sede</a>
+        </summary><div class="sede-cuerpo">`;
+      for (const carpeta of ["EQUIPOS_OK","A_REVISAR"]){
+        const archs = (s.carpetas || {})[carpeta] || [];
+        if (!archs.length) continue;
+        const etiqueta = carpeta === "EQUIPOS_OK" ? "Equipos listos" : "Por revisar";
+        inner += `<div class="grupo">${etiqueta} (${archs.length})</div>`;
+        for (const a of archs){
+          const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, carpeta, archivo:a.Name});
+          inner += `<div class="arch"><a href="${url}">↓ ${esc(a.Name)}</a><span class="tam">${kb(a.Size)}</span></div>`;
         }
-        for (const e of (s.extras || [])){
-          const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, archivo:e});
-          inner += `<div class="arch"><a href="${url}">↓ ${esc(e)}</a></div>`;
-        }
-        inner += `</div>`;
       }
-      if (fCorrida && c.corrida !== fCorrida) continue;
-      if (fq && !inner.toLowerCase().includes(fq) && !c.corrida.toLowerCase().includes(fq)) continue;
-      if (fSer && !inner.toLowerCase().includes(fSer)) continue;
-      det.innerHTML = inner;
-      cont.appendChild(det);
-      pintadas++;
+      for (const e of (s.extras || [])){
+        const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, archivo:e});
+        inner += `<div class="arch"><a href="${url}">↓ ${esc(e)}</a></div>`;
+      }
+      inner += `</div></details>`;
     }
-    $("resultados-vac").style.display = pintadas ? "none" : "block";
-    $("resultados-vac").textContent = S.resultados.length
-      ? "Ningún resultado coincide con el filtro."
-      : "Sin corridas todavía.";
-    badge("b-resultados", S.resultados.length, false);
+    if (fCorrida && c.corrida !== fCorrida) continue;
+    if (fq && !inner.toLowerCase().includes(fq) && !c.corrida.toLowerCase().includes(fq)) continue;
+    if (fSer && !inner.toLowerCase().includes(fSer)) continue;
+    det.innerHTML = inner;
+    det.open = false;
+    cont.appendChild(det);
+    pintadas++;
+  }
+  $("resultados-vac").style.display = pintadas ? "none" : "block";
+  $("resultados-vac").textContent = S.resultados.length
+    ? "Ningún resultado coincide con el filtro."
+    : "Sin corridas todavía.";
+  badge("b-resultados", S.resultados.length, false);
+  const historial = $("historial-resultados");
+  if (historial){
+    historial.hidden = !S.resultados.length;
+    if (fq) historial.open = true;   // buscar abre el historial para ver el filtro
+    const titulo = $("historial-titulo");
+    if (titulo) titulo.textContent = `Ver corridas anteriores (${S.resultados.length})`;
+  }
+  pintarResumenResultados();
+  actualizarFlujo();
+}
+
+/* Resumen de la última corrida (o de la seleccionada en el filtro). */
+function pintarResumenResultados(){
+  const box = $("resumen-corrida");
+  if (!box) return;
+  const filtrada = $("f-res-corrida")?.value || "";
+  const c = (S.resultados || []).find((x) => x.corrida === filtrada) ||
+            (S.resultados || [])[0];
+  box.hidden = !c;
+  if (!c) return;
+  $("res-corrida").textContent = fechaCorrida(c.corrida);
+  $("res-corrida").title = c.corrida;
+  $("res-ok").textContent = c.n_ok;
+  $("res-rev").textContent = c.n_revisar;
+  $("res-sedes").textContent = (c.sedes || []).length;
 }
 
 /* ---------------- Seriales (inventario editable) ---------------- */
@@ -1282,6 +1577,8 @@ async function cargarEstado(){
 function aplicarSnapshot(snap){
   if (!snap) return;
   S.modo = snap.modo || "local";
+  S.dryDefault = !!snap.dry_default;
+  pintarAvisoPrueba();
   pintarModo(snap);
   pintarWorker(snap.worker);
   pintarCola(snap.cola);
@@ -1659,8 +1956,9 @@ function pintarFin(){
   caja.hidden = !fin;
   if (!fin) return;
   caja.classList.toggle("error", j.estado === "error");
+  const simple = esSimple();
   const est = $("fin-estado");
-  if (est) est.textContent = j.estado === "ok" ? "TERMINADO" :
+  if (est) est.textContent = j.estado === "ok" ? (simple ? "LISTO" : "TERMINADO") :
     (j.estado === "error" ? "TERMINADO CON ERROR" : "CANCELADO");
   const ini = j.iniciado_en ? new Date(j.iniciado_en.replace(" ", "T")) : null;
   const term = j.terminado_en ? new Date(j.terminado_en.replace(" ", "T")) : null;
@@ -1671,9 +1969,11 @@ function pintarFin(){
   const pe = r.por_estado || {};
   const ok = pe.OK || 0, rev = pe.A_REVISAR || 0;
   const datos = [
-    ["job", `#${j.id}`], ["archivo", j.nombre],
+    ...(simple ? [] : [["job", `#${j.id}`]]),
+    ["archivo", j.nombre],
     ["páginas", `${j.pag_hechas}/${j.pag_total || "?"}`],
-    ["equipos OK", ok], ["a revisar", rev],
+    [simple ? "equipos listos" : "equipos OK", ok],
+    ["a revisar", rev],
     ["sedes", Object.keys(r.por_sede || {}).length || "—"],
   ];
   if (j.estado === "error" && (j.error || j.mensaje))
@@ -1691,10 +1991,20 @@ function irAResultados(){
   cargarResultados();
 }
 
-async function zipUltima(){
+function zipCorrida(corrida){
+  if (!corrida){ alert("todavía no hay una corrida con resultados"); return; }
+  window.open(API + "/zip?" + q({corrida}), "_blank");
+}
+function zipUltima(){
   const c = (S.resultados && S.resultados[0]) ? S.resultados[0].corrida : "";
-  if (!c){ alert("todavía no hay una corrida con resultados"); return; }
-  window.open(API + "/zip?" + q({corrida: c}), "_blank");
+  zipCorrida(c);
+}
+/* El botón del resumen respeta el filtro de corrida; el del cierre usa la última. */
+function zipResumen(){
+  const filtrada = $("f-res-corrida")?.value || "";
+  const elegida = (S.resultados || []).find((x) => x.corrida === filtrada) ||
+                  (S.resultados || [])[0];
+  zipCorrida(elegida ? elegida.corrida : "");
 }
 
 /* Lectura secuencial: apila las franjas de la hoja en curso (como un escáner). */
@@ -1792,7 +2102,7 @@ function anotarEvento(ev, silencioso){
     S.ultimaOcr = ev;
     S.paginas[ev.pag - 1] = S.paginas[ev.pag - 1] || undefined;   // reserva el hueco
     mostrarHoja(ev.pdf || S.docActual, ev.pag,
-                {sn: ev.sn ? ev.sn + " (ocr)" : "", pag_total: ev.pag_total});
+                {sn: ev.sn ? ev.sn + (esSimple() ? "" : " (ocr)") : "", pag_total: ev.pag_total});
     pintarLecturaOcr(ev);
     if (!silencioso) anotarTrabajador(ev);
     if (S.modal) refrescarModalLive(ev);
@@ -1852,6 +2162,32 @@ function pintarProgreso(){
            (j.terminado_en ? ` — terminó ${j.terminado_en}` : " — sin job en curso")
          : "Sin job en curso.");
 
+  /* Titular en lenguaje llano para la vista simple. */
+  const pagActual = (S.ultimaOcr && S.ultimaOcr.pag) || (enCurso && enCurso.pag_hechas) || null;
+  const totalProg = totalDoc || (j && j.pag_total) || 0;
+  const grande = $("prog-grande"), sub = $("prog-sub");
+  if (grande){
+    if (enCurso) grande.textContent = `Procesando ${j.nombre}`;
+    else if (j && j.estado === "ok") grande.textContent = "Proceso terminado";
+    else if (j && j.estado === "error") grande.textContent = "El proceso terminó con error";
+    else grande.textContent = "Sin proceso en curso";
+  }
+  if (sub){
+    if (enCurso){
+      sub.textContent = `${pagActual
+        ? `Página ${pagActual}${totalProg ? " de " + totalProg : ""}`
+        : "Preparando el documento"} · ${pctJob}% completado`;
+    } else if (j && j.estado === "ok"){
+      sub.textContent = `${j.nombre} · ${j.pag_hechas}/${j.pag_total || "?"} páginas · resultados listos en Resultados`;
+    } else if (j && j.estado === "error"){
+      sub.textContent = `${j.nombre} · revisa el detalle en la vista completa o vuelve a intentarlo`;
+    } else if (j){
+      sub.textContent = `Último trabajo: ${j.nombre} · ${estadoLlano(j.estado)}`;
+    } else {
+      sub.textContent = "Sube tus PDFs en Documentos y pulsa Procesar.";
+    }
+  }
+
   $("m-pag").textContent  = ultima ? `${ultima.pag}/${ultima.pag_total}` : "—";
   $("m-vel").textContent  = ultima && ultima.vel_pag_min ? ultima.vel_pag_min.toFixed(1)+" pág/min" : "—";
   $("m-eta-doc").textContent = ultima ? mmss(ultima.eta_doc_s) : "—";
@@ -1865,6 +2201,11 @@ function pintarProgreso(){
   const cont = $("paginas");
   cont.innerHTML = "";
   const n = Math.max(S.pagTotalDoc || 0, S.ocrTotal || 0, S.paginas.length);
+  const leyendaPaginas = document.querySelector(".leyenda-paginas");
+  if (leyendaPaginas) leyendaPaginas.hidden = n === 0;
+  const etiquetaPaginas = $("etiqueta-paginas");
+  if (etiquetaPaginas) etiquetaPaginas.textContent = S.docActual
+    ? `Páginas de ${S.docActual}` : "Páginas del documento";
   for (let i = 0; i < n; i++){
     const p = S.paginas[i];
     const d = document.createElement("div");
@@ -1935,6 +2276,7 @@ function pintarProgreso(){
     cs.appendChild(c);
   }
   pintarFin();
+  actualizarFlujo();
 }
 
 /* ==========================================================================
@@ -1958,8 +2300,7 @@ function aplicarVista(v, alArrancar){
   }
   try { localStorage.setItem("panel.vista", vista); } catch(_) {}
   /* Etiquetas en lenguaje llano para la vista simple. */
-  const todo = $("btn-procesar-todo");
-  if (todo) todo.textContent = vista === "simple" ? "Procesar ahora" : "Disparar con toda la entrada";
+  pintarAvisoPrueba();
   const dry = $("dry-txt");
   if (dry) dry.innerHTML = vista === "simple"
     ? "solo simular (no mueve archivos ni envía correo)"
@@ -1973,6 +2314,10 @@ function aplicarVista(v, alArrancar){
     if (p) p.textContent = vista === "simple"
       ? "vista simple · lo esencial" : "vista completa · incluye lo técnico";
   }
+  const historial = $("historial-resultados");
+  if (historial) historial.open = vista === "completa";
+  actualizarFlujo();
+  try { moverIndicador(); } catch(_) {}
 }
 
 function alternarVista(){
@@ -1984,14 +2329,14 @@ function conectarSSE(){
   if (S.es) S.es.close();
   const es = new EventSource(API + "/progreso");
   S.es = es;
-  es.addEventListener("open", () => { $("c-conexion").textContent = "en vivo (SSE)"; $("c-conexion").className = "chip ok"; });
+  es.addEventListener("open", () => { $("c-conexion").textContent = "conectado"; $("c-conexion").className = "chip ok"; });
   es.addEventListener("snapshot", (e) => {
     const snap = JSON.parse(e.data);
     S.ultimoEventoId = 0;
     limpiarLog();
     S.paginas = []; S.docActual = null; S.pagTotalDoc = 0; S.ultima = null;
     aplicarSnapshot(snap);
-    $("c-conexion").textContent = "en vivo (reconectado)";
+    $("c-conexion").textContent = "conectado";
   });
   es.addEventListener("evento", (e) => {
     const ev = JSON.parse(e.data);
@@ -2043,6 +2388,7 @@ function mostrarPestana(nombre, moverFoco){
   catch (e) { /* p. ej. iframe con origen opaco: se ignora el hash */ }
   try { moverIndicador(); } catch (e) { /* sin indicador, la pestaña sigue funcionando */ }
   if (moverFoco) { try { $("tab-" + nombre).focus(); } catch (e) {} }
+  actualizarFlujo();
 }
 
 function moverIndicador(){
