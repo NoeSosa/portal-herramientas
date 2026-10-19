@@ -113,7 +113,7 @@ export const HERRAMIENTAS: readonly Herramienta[] = [
     disponible: true,
     subeArchivos: false,
     esPesada: false,
-    etiqueta: "LEDGER · SOLO LECTURA",
+    etiqueta: "LEDGER · EDITABLE",
   },
 ] as const;
 

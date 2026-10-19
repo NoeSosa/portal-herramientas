@@ -56,7 +56,7 @@ solo es alcanzable por nginx a través de la red `portal`.
 ```yaml
 security_opt: [no-new-privileges:true]   # bloquea escalada vía setuid
 cap_drop: [ALL]                          # sin capacidades de kernel
-user: portal (uid 1001)                  # nunca root
+user: portal (uid 1000)                  # nunca root
 read_only: true (frontend)               # raíz de solo lectura
 tmpfs: [...]                             # lo mínimo escribible
 ```
@@ -192,47 +192,82 @@ aplicación, y por último (si aplica) la llave SSH del servidor.
 ## Acceso al workspace de OpenClaw
 
 El portal monta el volumen de OpenClaw para leer los scripts de las
-herramientas. Tres decisiones de seguridad al respecto:
-
-### 1. Solo lectura (`:ro`)
+herramientas y para que dos servicios escriban donde el agente lo espera. El
+montaje **no es uniforme**:
 
 ```yaml
-- openclaw-workspace:/home/node/.openclaw:ro
+backend:    rw   # edita el ledger de finanzas in place
+panel:      rw   # guarda panel.db, entrada_local/ y auto/salida/
+worker:     ro
+worker-ocr: ro
+frontend:   no lo monta
 ```
 
-El portal **no puede modificar** los scripts del agente. Aunque un endpoint
-tuviera una vulnerabilidad de escritura, el kernel rechazaría el cambio en ese
-punto de montaje (`EROFS: read-only file system`).
+### 1. Por qué backend y panel escriben
 
-### 2. Los scripts se copian antes de ejecutarlos
+- **Backend (`:rw`)**: el panel de finanzas edita el ledger real. Si escribiera
+  una copia, el agente seguiría viendo los datos viejos. Un submount `:rw`
+  dentro de un padre `:ro` no sirve para acotar la escritura: Docker reemplaza
+  el directorio por la raíz del volumen.
+- **Panel (`:rw`)**: su base SQLite, la entrada local y los resultados viven
+  dentro de `separador_pdfs/`, que es donde el agente los encuentra.
+
+El resto de servicios monta `:ro` porque solo lee scripts, el venv y los
+modelos.
+
+### 2. Riesgo asumido
+
+**Backend y panel pueden escribir en todo el workspace**, no solo en el ledger
+o en la carpeta del panel. Un fallo de la aplicación tendría más alcance que
+con un montaje `:ro`. Se acepta porque la alternativa —copiar el ledger y
+sincronizarlo— rompe la fuente de verdad y el agente vería datos viejos.
+
+Las mitigaciones son las del resto del modelo: contenedores non-root, sin
+`docker.sock`, red aislada y nada publicado a internet. Si se quiere acotar, las
+opciones siguen siendo copiar solo lo necesario a un volumen propio del portal
+o ajustar los permisos del workspace en el host (`chmod` selectivo), o sacar el
+ledger a un volumen dedicado montado solo en el backend.
+
+### 3. Los scripts se copian antes de ejecutarlos
 
 `tts.py` hace `makedirs()` de su carpeta temporal y resuelve los modelos de
-forma relativa, lo que falla con el volumen en solo lectura. En vez de
-modificar el original o montar en escritura, el portal **copia** el script a
-`/data/tts-runtime/` y sustituye su `TTS_DIR` por la ruta absoluta.
+forma relativa. Ejecutarlo desde el workspace escribiría `temp/` dentro del
+volumen del agente y rompería esas rutas. En vez de modificar el original, el
+portal **copia** el script a `/data/tts-runtime/` y sustituye su `TTS_DIR` por
+la ruta absoluta.
+
+El resto de scripts (visión, transcripción, canción, finanzas y comprobantes)
+pasan por `app/services/puente.py`, que los copia a `/data/runtime/scripts/`
+conservando la misma profundidad relativa.
 
 Ventajas:
 - El original queda intacto (lo usa el agente por WhatsApp).
-- El portal solo ejecuta el script; nunca escribe en el workspace.
+- El portal ejecuta una copia, no el archivo del agente.
 - La copia se puede inspeccionar para ver qué se está ejecutando exactamente.
 
-### 3. Mismo uid que el dueño del volumen
+### 4. Mismo uid que el dueño del volumen
 
-El backend corre como uid 1000 porque `/home/node/.openclaw` es
-`drwx------` de uid 1000. Esto significa que **el backend podría leer todo el
+El backend y el panel corren como uid 1000 porque `/home/node/.openclaw` es
+`drwx------` de uid 1000. Esto significa que **pueden leer y escribir todo el
 volumen**: credenciales, MEMORY.md, conversaciones.
 
-Es una concesión consciente: es la única forma de leer los scripts. Si en el
-futuro se quiere acotar, las opciones son:
+Es una concesión consciente: es la única forma de leer los scripts y de que el
+ledger y el panel escriban donde el agente los ve. Si en el futuro se quiere
+acotar, las opciones son:
 
 - Copiar solo los scripts necesarios a un volumen propio del portal.
 - Ajustar los permisos del workspace en el host (`chmod` selectivo).
+- Sacar el ledger a un volumen dedicado y montarlo solo en el backend.
 
 ### Lo que el portal NO hace con el volumen
 
-- No escribe en él (montaje `:ro`).
+- **No escribe en `workspace/scripts/` ni en `workspace/venv/`**: los scripts
+  se ejecutan desde copias en `/data`. Backend y panel escriben solo en las
+  rutas de datos que necesitan (ledger de finanzas, `panel.db`,
+  `entrada_local/`, `auto/salida/`); el resto de servicios no escribe.
 - No lee `credentials/`, `identity/` ni `.env` — el código solo toca
-  `workspace/scripts/`, `workspace/venv/` y `workspace/tts_models/`.
+  `workspace/scripts/`, `workspace/venv/`, `workspace/tts_models/` y
+  `workspace/separador_pdfs/`.
 - No expone ninguna ruta del volumen al navegador.
 
 ---

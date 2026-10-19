@@ -20,7 +20,7 @@ name: herramientas-web
 services:
   # --- Inicializador: prepara permisos del volumen de datos --------------
   # Docker crea los volúmenes nombrados como root. Como el resto de servicios
-  # corre con uid 1001, necesitan que /data les pertenezca. Este servicio de
+  # corre con uid 1000, necesitan que /data les pertenezca. Este servicio de
   # vida corta lo arregla y termina; los demás esperan a que lo complete.
   inicializador:
     image: alpine:3.19
@@ -104,12 +104,14 @@ services:
     volumes:
       - datos:/data
       # Workspace de OpenClaw (scripts, venv, modelos en tts_models/).
-      # SOLO LECTURA: el portal nunca debe modificar los scripts del agente.
+      # El portal no debe modificar los scripts del agente; solo backend y
+      # panel escriben, y lo hacen en sus rutas de datos.
       # Se monta en la MISMA ruta que usa el shebang del venv para que
       # resuelva: /home/node/.openclaw/workspace/venv/bin/python
-      # ⚠️ El backend es el ÚNICO servicio con el workspace en ESCRITURA.
-      # Motivo: el panel de finanzas permite editar el ledger, y editar una
-      # copia no serviría de nada (el agente seguiría viendo los datos viejos).
+      # ⚠️ El backend y el panel son los ÚNICOS servicios con el workspace en
+      # ESCRITURA. Motivo: el panel de finanzas permite editar el ledger, y
+      # editar una copia no serviría de nada (el agente seguiría viendo los
+      # datos viejos); el panel guarda ahí su BD y sus resultados.
       # OpenClaw mantiene este volumen con escritura normal, así que el script
       # `finanzas.py` escribe el original directamente y no hace falta copiar.
       #
@@ -361,12 +363,13 @@ networks:
 volumes:
   # Workspace de OpenClaw (scripts, venv, modelos). Es un volumen EXTERNO que
   # ya existe en el host: se declara `external` para que compose no lo cree ni
-  # lo borre, y se monta en solo lectura en los servicios que lo necesitan.
+  # lo borre. Se monta en los servicios que lo necesitan, con `:ro` o `:rw`
+  # según corresponda (ver backend y panel).
   openclaw-workspace:
     external: true
     name: agente-openclaw-sh6xwb_openclaw_data
   # Datos compartidos entre backend, worker y worker-ocr.
-  # Se prepara con el servicio `inicializador` para que el uid 1001 pueda
+  # Se prepara con el servicio `inicializador` para que el uid 1000 pueda
   # escribir: Docker crea los volúmenes nuevos como root.
   datos:
   redis-data:

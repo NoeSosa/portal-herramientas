@@ -74,6 +74,11 @@ log "Construyendo frontend (React + nginx)"
 docker build -t herramientas-web-frontend:local ./frontend
 
 if [[ $SOLO_BACKEND -eq 0 && $SIN_OCR -eq 0 ]]; then
+  # El Dockerfile.ocr hace `COPY separador/` con contexto ./backend, pero el
+  # motor vive en separador/ (raíz). Se materializa la copia antes del build.
+  log "Preparando el motor del separador (backend/separador)"
+  bash "$DIRECTORIO/scripts/preparar_separador.sh"
+
   log "Construyendo worker OCR (PaddleOCR — tarda varios minutos)"
   docker build -t herramientas-web-ocr:local -f backend/Dockerfile.ocr ./backend
 elif [[ $SIN_OCR -eq 1 ]]; then

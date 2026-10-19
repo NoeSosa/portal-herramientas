@@ -87,8 +87,9 @@ Una tarjeta se marca `disponible: true` **solo si el endpoint existe y
 funciona**. Prometer una herramienta que devuelve 404 es peor que marcar
 "próximamente": el usuario pierde tiempo y confianza.
 
-Al cierre de esta sesión solo TTS está activa; el resto está marcado pendiente
-aunque algunas tengan backend escrito pero sin router conectado.
+Todas las herramientas del catálogo están activas y su endpoint responde. Si
+una deja de funcionar, se marca `disponible: false` en vez de dejarla
+prometiendo algo que devuelve error.
 
 ---
 

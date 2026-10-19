@@ -4,10 +4,12 @@ Contrato único para invocar cualquier script del workspace del agente desde el
 portal. Existe porque los scripts comparten tres peculiaridades que, resueltas
 por separado en cada herramienta, se acaban implementando mal:
 
-  1. **El volumen es de solo lectura.** Muchos scripts crean su carpeta
-     `temp/` relativa a sí mismos al arrancar (`os.makedirs(..., exist_ok=True)`),
-     y eso falla con `EROFS`. Solución: **copiar el script** a un directorio
-     escribible del portal antes de ejecutarlo. El original nunca se toca.
+  1. **Los scripts escriben junto a sí mismos.** Muchos crean su carpeta
+     `temp/` relativa al script al arrancar (`os.makedirs(..., exist_ok=True)`)
+     y esperan escribir ahí. No queremos que el portal ensucie el workspace del
+     agente (y en los workers el montaje es `:ro`). Solución: **copiar el
+     script** a un directorio escribible del portal antes de ejecutarlo. El
+     original nunca se toca.
 
   2. **Las rutas son relativas al script.** `tts.py` resuelve sus modelos como
      `../tts_models`, `analyze_image.py` lee `GEMINI_API_KEY` de `../.env` y
@@ -198,11 +200,9 @@ def copiar_contexto(nombre: str, settings: Settings | None = None) -> Path:
 
     Algunos scripts resuelven sus datos como `../<carpeta>` relativo a sí
     mismos (`finanzas.py` → `../finanzas`, `procesar_comprobante.py` → el mismo
-    árbol). Con el workspace montado como solo lectura escribir en el original
-    es imposible: `finanzas.py` sí escribe al registrar un movimiento.
-
-    Copiar la carpeta al mismo nivel relativo que espera el script mantiene
-    intacto el original y deja al portal trabajar sobre su propia copia.
+    árbol) y pueden escribir ahí. Copiar la carpeta al mismo nivel relativo que
+    espera el script mantiene intacto el original y deja al portal trabajar
+    sobre su propia copia.
 
     Args:
         nombre: carpeta dentro del workspace, p. ej. ``finanzas``.

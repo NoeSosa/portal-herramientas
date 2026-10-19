@@ -11,10 +11,11 @@ el pipeline de OCR y el panel que el portal publica en `/panel/`.
 |---|---|
 | `frontend/` | Portal web (React + Vite). nginx sirve la app y hace de proxy al backend. |
 | `backend/` | API en FastAPI: finanzas, visión, transcripción, texto a voz, separador, canción. |
-| `separador/` | Copia del motor del separador que se hornea en la imagen OCR. |
+| `separador/` | Copia del motor del separador que se hornea en la imagen OCR. Si cambias el motor en `separador_pdfs/`, replica el cambio aquí antes de desplegar. |
 | `separador_pdfs/` | Taller del separador: pipeline de OCR, panel completo y sus pruebas. |
 | `docker-compose.yml` | Servicios: frontend, backend, worker, worker OCR, redis y panel. |
 | `scripts/desplegar.sh` | Reconstruye imágenes y recrea contenedores sin `docker compose`. |
+| `scripts/preparar_separador.sh` | Copia `separador/` a `backend/separador/` antes de construir la imagen OCR. |
 | `docs/` | Diseño y notas de seguridad. |
 
 El panel del separador se sirve en `/panel/` y su API en `/api/panel/`. El servicio
@@ -98,7 +99,7 @@ herramienta, se implementan mal:
 
 | Problema | Solución en el puente |
 |---|---|
-| El volumen se monta en **solo lectura** y varios scripts hacen `makedirs` de su `temp/` | El script se **copia** a `/data/runtime/scripts/` antes de ejecutarlo |
+| Varios scripts hacen `makedirs` de su `temp/` y no deben tocar el workspace | El script se **copia** a `/data/runtime/scripts/` antes de ejecutarlo |
 | Cada script resuelve rutas **relativas a sí mismo** (`../.env`, `../tts_models`) | La copia vive a la misma profundidad, así que las rutas siguen resolviendo |
 | Las dependencias viven en el **venv** de OpenClaw, no en el python del contenedor | Siempre se ejecuta con `/home/node/.openclaw/workspace/venv/bin/python` |
 
@@ -156,9 +157,16 @@ chmod 600 .env
 ### 2. Levantar el stack
 
 ```bash
+# El Dockerfile del worker OCR hace `COPY separador/` con contexto ./backend,
+# así que primero hay que materializar la copia.
+bash scripts/preparar_separador.sh
+
 docker compose up -d --build
 docker compose ps
 ```
+
+`scripts/desplegar.sh` ya llama a `preparar_separador.sh` por su cuenta; el paso
+manual solo hace falta al construir con `docker compose`.
 
 ### 3. Abrir el túnel desde tu máquina
 
@@ -207,7 +215,7 @@ Resumen del modelo; el detalle está en [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ```
 herramientas-web/
-├─ docker-compose.yml       # los 4 servicios
+├─ docker-compose.yml       # los servicios del stack
 ├─ .env.example             # plantilla de configuración
 ├─ backend/
 │  ├─ Dockerfile            # multi-stage, non-root
@@ -248,6 +256,13 @@ herramientas-web/
 ## Script de despliegue
 
 `scripts/desplegar.sh` reconstruye y recrea el stack replicando el compose.
+Antes de la imagen OCR materializa `backend/separador/` desde `separador/` con
+`scripts/preparar_separador.sh`.
+
+> **Nota:** `sincronizar.sh` y `desplegar.sh` se conservan a propósito durante
+> la sincronización. Si cambias alguno, el servidor seguirá usando su copia
+> vieja hasta que la reemplaces a mano.
+
 Se ejecuta desde el contenedor de OpenClaw:
 
 ```bash
@@ -285,6 +300,7 @@ cd herramientas-web
 # 1. Construir las tres imágenes
 docker build -t herramientas-web-backend:local ./backend
 docker build -t herramientas-web-frontend:local ./frontend
+bash scripts/preparar_separador.sh   # materializa backend/separador
 docker build -t herramientas-web-ocr:local -f backend/Dockerfile.ocr ./backend
 
 # 2. Recrear los contenedores (ver el script sección «Comandos útiles»)
@@ -304,5 +320,5 @@ compose sigue siendo la fuente de verdad; los `docker run` deben replicarlo.
 | El worker OCR sí monta el workspace (solo lectura) | La cola pesada también transcribe, y eso necesita los scripts y el intérprete del venv |
 | Un solo id por trabajo | Se pasa `job_id=` a RQ para que el id del POST, la carpeta de salida y la descarga sean el mismo |
 | Alias DNS de red | Compose los crea por nombre de servicio (`backend`, `redis`). Con `docker run` hay que añadirlos con `--alias`, o nginx responde 502 |
-| El **backend** monta el workspace en `rw`; el resto en `ro` | El panel de finanzas edita el ledger real: si escribiera una copia, el agente seguiría viendo los datos viejos. Un submount `:rw` dentro de un padre `:ro` **no** funciona: Docker reemplaza el directorio por la raíz del volumen y el ledger desaparece |
+| El **backend** y el **panel** montan el workspace en `rw`; el resto en `ro` | El panel de finanzas edita el ledger real: si escribiera una copia, el agente seguiría viendo los datos viejos. El panel guarda ahí su BD y sus resultados. Un submount `:rw` dentro de un padre `:ro` **no** funciona: Docker reemplaza el directorio por la raíz del volumen y el ledger desaparece |
 

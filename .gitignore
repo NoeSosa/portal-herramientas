@@ -39,10 +39,13 @@ Thumbs.db
 tsconfig.tsbuildinfo
 .pytest_cache/
 
-# Backend: copia del motor del separador para horneado en la imagen OCR.
-# La fuente de verdad vive en ../separador_pdfs/ del workspace.
+# Backend: copia GENERADA del motor del separador para hornear en la imagen OCR.
+# La genera scripts/preparar_separador.sh a partir de separador/; no se edita.
 backend/separador/
 
 # Estado del despliegue automatico
 .despliegue/
+
+# El taller ya está versionado; esta regla solo evita añadir archivos NUEVOS
+# por accidente. No saca del repositorio lo que ya está rastreado.
 separador_pdfs/

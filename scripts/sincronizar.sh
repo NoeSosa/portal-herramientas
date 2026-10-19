@@ -25,7 +25,8 @@
 #   - scripts/      -> se reemplaza SALVO sincronizar.sh y desplegar.sh.
 #   - docs/         -> se reemplaza.
 #   - separador/    -> se reemplaza (motor horneado en la imagen OCR).
-#   - backend/      -> SOLO se agregan archivos nuevos.
+#   - backend/      -> se actualiza por contenido. Nunca se borra un archivo
+#                      que solo exista en el servidor.
 #   - separador_pdfs/ -> se reemplaza el CODIGO; los datos nunca se tocan:
 #     entrada_local/, inventarios_local/, auto/, panel/panel.db,
 #     panel/config*.json, panel/logs/, panel/tmp/.
@@ -139,6 +140,36 @@ iguales() {  # $1 origen, $2 destino, resto: nombres a excluir. 0 = iguales
            | grep -v 'Mod time differs')" ]]
 }
 
+# Copia al backend solo los archivos cuyo CONTENIDO cambió. No borra nada: un
+# archivo que exista solo en el servidor se conserva. La versión anterior solo
+# agregaba archivos nuevos, así que un cambio en main.py o en un router se
+# detectaba (y se reconstruía la imagen) pero el código nunca se copiaba.
+sincronizar_backend() {  # $1 origen, $2 destino. Imprime cuántos copió.
+  local origen="$1" destino="$2"
+  local copiados=0 archivo relativo objetivo
+
+  while IFS= read -r -d '' archivo; do
+    relativo="${archivo#"$origen"/}"
+    objetivo="$destino/$relativo"
+
+    # Artefactos de Python y el motor horneado (lo genera
+    # preparar_separador.sh) no vienen del repositorio.
+    case "$relativo" in
+      __pycache__/*|*/__pycache__/*|*.pyc|*.pyo|separador/*) continue ;;
+    esac
+
+    if [[ -f "$objetivo" ]] && cmp -s "$archivo" "$objetivo"; then
+      continue
+    fi
+
+    mkdir -p "$(dirname "$objetivo")"
+    cp -a "$archivo" "$objetivo"
+    copiados=$((copiados + 1))
+  done < <(find "$origen" -type f -not -path '*/__pycache__/*' -print0)
+
+  printf '%s' "$copiados"
+}
+
 CAMBIOS=()
 iguales "$NUEVO/frontend" "$PORTAL/frontend" node_modules dist .vite \
   || CAMBIOS+=("frontend")
@@ -147,19 +178,13 @@ iguales "$NUEVO/scripts" "$PORTAL/scripts" sincronizar.sh desplegar.sh \
 iguales "$NUEVO/docs" "$PORTAL/docs" || CAMBIOS+=("docs")
 iguales "$NUEVO/separador" "$PORTAL/separador" || CAMBIOS+=("separador")
 
-# backend: se agregan archivos que no existan (nunca se pisa lo que se usa)
-NUEVOS_BACKEND=0
-while IFS= read -r -d '' f; do
-  rel="${f#"$NUEVO"/}"
-  if [[ ! -e "$PORTAL/$rel" ]]; then
-    mkdir -p "$PORTAL/$(dirname "$rel")"
-    cp -a "$f" "$PORTAL/$rel"
-    NUEVOS_BACKEND=1
-  fi
-done < <(find "$NUEVO/backend" -type f -not -path '*/__pycache__/*' -print0 2>/dev/null)
-[[ $NUEVOS_BACKEND -eq 1 ]] && CAMBIOS+=("backend(nuevos)")
-iguales "$NUEVO/backend/app" "$PORTAL/backend/app" __pycache__ \
-  || CAMBIOS+=("backend(requiere reinicio)")
+# backend: se aplica por contenido, incluyendo cambios a archivos existentes.
+# El conteo se registra para que el log diga cuántos archivos se tocaron.
+BACKEND_COPIADOS="$(sincronizar_backend "$NUEVO/backend" "$PORTAL/backend")"
+if [[ "$BACKEND_COPIADOS" -gt 0 ]]; then
+  registrar "backend: $BACKEND_COPIADOS archivo(s) actualizado(s)"
+  CAMBIOS+=("backend")
+fi
 
 # separador_pdfs: codigo si, datos no
 DATOS_TALLER=(entrada_local inventarios_local auto panel/panel.db panel/panel.db-wal
@@ -227,11 +252,14 @@ if printf '%s\n' "${CAMBIOS[@]}" | grep -qE 'separador|backend'; then REBUILD_OC
 
 resultado=""
 if [[ $REBUILD_OCR -eq 1 ]]; then
-  registrar "reconstruyendo imagen OCR (tarda varios minutos)"
-  if ( cd "$PORTAL" && docker build -t herramientas-web-ocr:local -f backend/Dockerfile.ocr ./backend >>"$REGISTRO" 2>&1 ); then
+  registrar "preparando motor del separador y reconstruyendo imagen OCR (tarda varios minutos)"
+  if ( cd "$PORTAL" \
+       && bash scripts/preparar_separador.sh \
+       && docker build -t herramientas-web-ocr:local -f backend/Dockerfile.ocr ./backend ) \
+       >>"$REGISTRO" 2>&1; then
     resultado="imagen OCR + "
   else
-    registrar "ERROR construyendo la imagen OCR"
+    registrar "ERROR preparando el separador o construyendo la imagen OCR"
   fi
 fi
 

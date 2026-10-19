@@ -56,8 +56,9 @@ class Settings(BaseSettings):
     herramientas_scripts_dir: Path = Path("/home/node/.openclaw/workspace/scripts")
     """Carpeta con los scripts de Python (tts.py, transcribir_av.py…).
 
-    Se monta desde el volumen de OpenClaw en SOLO LECTURA: el portal nunca
-    debe poder modificar los scripts del agente.
+    Se monta desde el volumen de OpenClaw. El portal no debe modificar los
+    scripts del agente: los ejecuta desde copias en `/data` y solo escribe en
+    las rutas de datos que necesita (ledger, panel, resultados).
     """
 
     herramientas_venv_bin: Path = Path("/home/node/.openclaw/workspace/venv/bin")

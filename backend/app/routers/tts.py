@@ -2,10 +2,10 @@
 
 Envuelve `scripts/tts.py` (Piper, voces en español mexicano).
 
-Entorno de ejecución: el compose monta el volumen de OpenClaw como solo lectura
-en `/scripts` (código), `/venv` (binarios) y `/modelos` (modelos de voz). El
-PDF de entrada y el WAV de salida van al volumen de datos del portal, que sí
-es escribible.
+Entorno de ejecución: el backend monta el workspace de OpenClaw en
+`/home/node/.openclaw` (scripts, venv y `tts_models/`). Para no escribir
+`temp/` dentro del workspace, `tts.py` se copia a `/data/tts-runtime/`; la
+entrada y el WAV de salida viven en el volumen `datos` del portal.
 
 Piper tarda segundos, no minutos: va en la cola rápida y se ejecuta en un hilo
 para no bloquear el event loop de FastAPI.
@@ -83,9 +83,10 @@ def _preparar_ejecucion(script_origen: Path, modelos: Path, destino: Path) -> Pa
 
     Por qué no se ejecuta el script directamente desde el volumen:
 
-      1. El volumen se monta en SOLO LECTURA, y `tts.py` hace
-         `os.makedirs(OUTPUT_DIR)` incondicionalmente, aunque se le pase
-         `--output`. Sin este truco, el script muere al crear su carpeta.
+      1. No queremos que `tts.py` escriba su `temp/` dentro del workspace del
+         agente: el script hace `os.makedirs(OUTPUT_DIR)` incondicionalmente,
+         aunque se le pase `--output`. Sin este truco, el script muere al
+         crear su carpeta.
 
       2. El script resuelve los modelos como `../tts_models` relativo a sí
          mismo. Al copiarlo a otro directorio, esa ruta se rompe.
