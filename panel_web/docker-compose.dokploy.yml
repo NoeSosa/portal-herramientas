@@ -36,11 +36,7 @@ services:
     restart: "no"
     command:
       - python3
-      - -c
-      - |
-        from paddleocr import PaddleOCR
-        PaddleOCR(lang="en", use_angle_cls=False, show_log=False, cpu_threads=1)
-        print("modelos PaddleOCR listos")
+      - /separador_pdfs/panel/warmup_ocr.py
     environment:
       HOME: /data
     volumes:
@@ -72,6 +68,20 @@ services:
         condition: service_completed_successfully
     networks:
       - panelnet
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # HTTP -> HTTPS
+      - traefik.http.routers.pdfsep.rule=Host(`pdf-separator.duckdns.org`)
+      - traefik.http.routers.pdfsep.entrypoints=web
+      - traefik.http.routers.pdfsep.middlewares=redirect-to-https@file
+      # HTTPS con Let's Encrypt (Traefik de Dokploy)
+      - traefik.http.routers.pdfsep-secure.rule=Host(`pdf-separator.duckdns.org`)
+      - traefik.http.routers.pdfsep-secure.entrypoints=websecure
+      - traefik.http.routers.pdfsep-secure.tls=true
+      - traefik.http.routers.pdfsep-secure.tls.certresolver=letsencrypt
+      - traefik.http.services.pdfsep.loadbalancer.server.port=8000
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -111,6 +121,10 @@ services:
 networks:
   panelnet:
     driver: bridge
+  # Red de Dokploy/Traefik (ya existe en el host): permite enrutar el dominio
+  # pdf-separator.duckdns.org sin publicar puertos en el host.
+  dokploy-network:
+    external: true
 
 volumes:
   panel_data:

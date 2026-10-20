@@ -34,11 +34,7 @@ services:
     restart: "no"
     command:
       - python3
-      - -c
-      - |
-        from paddleocr import PaddleOCR
-        PaddleOCR(lang="en", use_angle_cls=False, show_log=False, cpu_threads=1)
-        print("modelos PaddleOCR listos")
+      - /separador_pdfs/panel/warmup_ocr.py
     environment:
       HOME: /data
     volumes:
