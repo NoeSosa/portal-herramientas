@@ -102,6 +102,10 @@ async def cabeceras_seguridad(request: Request, call_next):
         )
     if request.url.path.startswith("/api/") or request.url.path.startswith("/auth/"):
         respuesta.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/static/"):
+        # El HTML referencia style.css/app.js con ?v=...; además forzamos
+        # revalidación para que un redeploy no deje assets viejos en caché.
+        respuesta.headers["Cache-Control"] = "no-cache"
     return respuesta
 
 
@@ -184,7 +188,7 @@ def _error_login(detalle: str, status_code: int) -> HTMLResponse:
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Acceso denegado</title>"
-        "<link rel='stylesheet' href='/static/style.css'></head>"
+        "<link rel='stylesheet' href='/static/style.css?v=20261020a'></head>"
         "<body class='login-body'><main class='login-card'>"
         "<div class='login-brand'><span class='brand-mark'>PDF</span>"
         "<span class='brand-name'>Separador de PDFs</span></div>"
