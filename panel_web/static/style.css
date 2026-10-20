@@ -422,6 +422,50 @@ h1 {
   color: var(--muted-2);
 }
 
+.dropzone.subiendo {
+  border-color: var(--accent);
+  background: var(--paper-2);
+}
+
+.upload-visual {
+  position: relative;
+  width: 74px;
+  height: 36px;
+  margin-top: 14px;
+}
+
+.upload-sheet {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  width: 26px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+}
+
+.upload-sheet.s1 { transform: translateX(0) rotate(-4deg); }
+.upload-sheet.s2 { transform: translateX(9px) rotate(1deg); }
+.upload-sheet.s3 { transform: translateX(18px) rotate(5deg); background: var(--paper-2); }
+
+.upload-scan {
+  position: absolute;
+  top: 17px;
+  left: 0;
+  width: 62px;
+  height: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(201, 75, 45, .12);
+  animation: uploadScan 1.1s linear infinite;
+}
+
+@keyframes uploadScan {
+  0% { transform: translateY(-15px); opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(15px); opacity: 0; }
+}
+
 .form-status {
   min-height: 16px;
   margin-top: 10px;

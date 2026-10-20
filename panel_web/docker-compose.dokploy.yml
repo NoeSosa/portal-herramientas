@@ -62,7 +62,6 @@ services:
       - "8000"
     volumes:
       - panel_data:/data
-      - ./inventarios:/data/inventarios:ro
     depends_on:
       panel-init:
         condition: service_completed_successfully
@@ -100,7 +99,6 @@ services:
       - .env
     volumes:
       - panel_data:/data
-      - ./inventarios:/data/inventarios:ro
     depends_on:
       panel-init:
         condition: service_completed_successfully

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Administración · Separador de PDFs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=20261020b">
+  <link rel="stylesheet" href="/static/admin.css?v=20261020b">
+</head>
+<body class="admin-body">
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Mainbit, Separador de PDFs">
+      <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class="brand-text">
+        <span class="brand-kicker">MAINBIT / CONTROL</span>
+        <span class="brand-name">Separador</span>
+      </span>
+    </a>
+
+    <nav class="nav" aria-label="Secciones de administración">
+      <a class="nav-link is-active" href="#operacion"><span class="nav-num">01</span><span>Operación</span></a>
+      <a class="nav-link" href="#inventario"><span class="nav-num">02</span><span>Inventario</span></a>
+      <a class="nav-link" href="#sedes"><span class="nav-num">03</span><span>Sedes</span></a>
+    </nav>
+
+    <div class="sidebar-meta">
+      <p class="mono-label">ADMINISTRACIÓN</p>
+      <p class="sidebar-status"><span class="status-dot" aria-hidden="true"></span> Sesión elevada</p>
+      <p class="sidebar-user" data-user-email>—</p>
+    </div>
+
+    <div class="sidebar-foot">
+      <a class="logout" href="/">Panel usuario ↗</a>
+      <a class="logout" href="/auth/logout">Salir</a>
+    </div>
+  </aside>
+
+  <main class="workspace" id="main">
+    <header class="workspace-head">
+      <div class="head-top">
+        <span class="mono-label">CONTROL / ADMIN</span>
+        <span class="mono-label">USO INTERNO · MX</span>
+      </div>
+      <div class="head-main">
+        <div>
+          <h1>Operación</h1>
+          <p class="lede">
+            Estado de la cola, lectura hoja por hoja, inventario de seriales y
+            separación por sede. Sin maquillaje: lo que está pasando ahora.
+          </p>
+        </div>
+        <div class="head-side">
+          <span class="mono-label">SESIÓN</span>
+          <span class="head-user" data-user-email>—</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="admin-stats" aria-label="Resumen">
+      <div class="admin-stat"><span class="mono-label">JOBS ACTIVOS</span><strong id="stat-active">0</strong><span>en cola o procesando</span></div>
+      <div class="admin-stat"><span class="mono-label">PÁGINAS</span><strong id="stat-pages">0</strong><span>leídas en total</span></div>
+      <div class="admin-stat"><span class="mono-label">SEDES</span><strong id="stat-sedes">0</strong><span>con inventario</span></div>
+      <div class="admin-stat"><span class="mono-label">SERIALES</span><strong id="stat-seriales">0</strong><span>en la tabla equipos</span></div>
+    </section>
+
+    <section class="admin-section" id="operacion" aria-labelledby="operacion-title">
+      <div class="section-head">
+        <div class="section-label">
+          <span class="section-num">01</span>
+          <span class="mono-label" id="operacion-title">EN VIVO</span>
+        </div>
+        <div class="section-tools admin-tools">
+          <label class="select-label" for="admin-job">DOCUMENTO</label>
+          <select id="admin-job" class="admin-select"></select>
+          <button class="btn-text" type="button" id="admin-refresh">Actualizar ↻</button>
+        </div>
+      </div>
+
+      <div class="live-grid">
+        <div class="live-scan">
+          <div class="scan-paper" id="scan-paper">
+            <div class="scan-placeholder" id="scan-placeholder">PDF</div>
+            <img id="scan-img" alt="Hoja en lectura" hidden>
+            <div class="scan-beam" aria-hidden="true"></div>
+            <span class="scan-number" id="scan-number">—</span>
+          </div>
+          <div class="scan-caption">
+            <span id="scan-doc">Sin documento</span>
+            <span id="scan-range">—</span>
+          </div>
+        </div>
+
+        <div class="live-meta">
+          <span class="mono-label" id="live-status">SIN TRABAJO</span>
+          <h2 id="live-name">Esperando un documento</h2>
+          <p class="live-owner" id="live-owner">—</p>
+          <p class="live-message" id="live-message">La cola está vacía.</p>
+
+          <div class="live-progress"><div class="live-progress-bar" id="live-progress"></div></div>
+          <div class="live-numbers">
+            <div><span class="mono-label">HOJA</span><strong id="live-page">—</strong><span id="live-total">/ —</span></div>
+            <div><span class="mono-label">LEÍDAS</span><strong id="live-pages">—</strong><span>páginas</span></div>
+            <div><span class="mono-label">ETA</span><strong id="live-eta">—</strong><span>aprox.</span></div>
+          </div>
+
+          <div class="admin-columns">
+            <div class="admin-box">
+              <span class="mono-label">LECTORES OCR</span>
+              <div id="admin-workers" class="worker-list"><p class="admin-empty">Sin lectores en curso.</p></div>
+            </div>
+            <div class="admin-box">
+              <span class="mono-label">ÚLTIMA LECTURA</span>
+              <pre id="admin-ocr" class="ocr-live">Esperando la primera hoja…</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page-map">
+        <div class="page-map-head">
+          <span class="mono-label">MAPA DE HOJAS</span>
+          <span class="page-legend">
+            <i class="lg-ocr"></i> leída
+            <i class="lg-ok"></i> OK
+            <i class="lg-aviso"></i> revisar
+            <i class="lg-desc"></i> descartada
+          </span>
+        </div>
+        <div id="admin-pages" class="page-grid" aria-label="Mapa de páginas"></div>
+      </div>
+
+      <div class="admin-two">
+        <div class="admin-box">
+          <span class="mono-label">ÚLTIMAS HOJAS CLASIFICADAS</span>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>Hoja</th><th>Serial</th><th>Sede</th><th>Estado</th><th>Lector</th></tr></thead>
+              <tbody id="admin-recent"><tr><td colspan="5" class="admin-empty">Sin datos todavía.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="admin-box">
+          <span class="mono-label">COLA RECIENTE</span>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>Documento</th><th>Usuario</th><th>Estado</th><th>Avance</th></tr></thead>
+              <tbody id="admin-jobs"><tr><td colspan="4" class="admin-empty">Sin trabajos.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="admin-section" id="inventario" aria-labelledby="inventario-title">
+      <div class="section-head">
+        <div class="section-label">
+          <span class="section-num">02</span>
+          <span class="mono-label" id="inventario-title">INVENTARIO Y SEDES</span>
+        </div>
+        <div class="section-tools">
+          <span class="mono-label" id="inv-count">0 SERIALES</span>
+          <button class="btn-text" type="button" id="inv-export">Exportar Excel ↻</button>
+        </div>
+      </div>
+
+      <div class="inventory-bar">
+        <div class="inventory-import">
+          <input type="file" id="inv-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+          <button class="btn btn-primary" type="button" id="inv-import">Importar Excel</button>
+          <button class="btn-text" type="button" id="inv-choose">Elegir archivo</button>
+          <span class="mono-label" id="inv-status">—</span>
+        </div>
+        <p class="inventory-file" id="inv-archivo">Sin inventario exportado.</p>
+      </div>
+
+      <p class="admin-warning" id="inv-warning" hidden>
+        No hay seriales cargados: el pipeline no podrá asignar sede y todo caerá
+        como “desconocido”. Importa el Excel del inventario o da de alta un serial.
+      </p>
+
+      <form class="inventory-form" id="inv-form" autocomplete="off">
+        <label>Serial<input id="inv-sn" name="sn" required></label>
+        <label>Marca<input id="inv-marca" name="marca"></label>
+        <label>Modelo<input id="inv-modelo" name="modelo"></label>
+        <label>Sede<input id="inv-sede" name="sede"></label>
+        <label>Zona<input id="inv-zona" name="zona"></label>
+        <label>Domicilio<input id="inv-domicilio" name="domicilio"></label>
+        <label>Estatus<input id="inv-estatus" name="estatus"></label>
+        <label>Contador inicial<input id="inv-contador" name="contador_inicial"></label>
+        <div class="inventory-form-actions">
+          <button class="btn btn-primary" type="submit" id="inv-save">Guardar serial</button>
+          <button class="btn-text" type="button" id="inv-cancel" hidden>Cancelar</button>
+          <span class="mono-label" id="inv-form-status"></span>
+        </div>
+      </form>
+
+      <div class="inventory-filters">
+        <input type="search" id="inv-q" placeholder="serial, marca, modelo o sede…">
+        <select id="inv-sede-filter"><option value="">todas las sedes</option></select>
+        <select id="inv-marca-filter"><option value="">todas las marcas</option></select>
+        <select id="inv-estatus-filter"><option value="">todos los estatus</option></select>
+      </div>
+
+      <div class="table-scroll">
+        <table class="admin-table inventory-table">
+          <thead><tr><th>Serial</th><th>Marca</th><th>Modelo</th><th>Sede</th><th>Zona</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
+          <tbody id="inv-table-body"><tr><td colspan="8" class="admin-empty">Sin seriales todavía.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button class="btn-text" type="button" id="inv-prev">← anteriores</button>
+        <span class="mono-label" id="inv-range">0–0 de 0</span>
+        <button class="btn-text" type="button" id="inv-next">siguientes →</button>
+      </div>
+    </section>
+
+    <section class="admin-section" id="sedes" aria-labelledby="sedes-title">
+      <div class="section-head">
+        <div class="section-label">
+          <span class="section-num">03</span>
+          <span class="mono-label" id="sedes-title">SEDES</span>
+        </div>
+        <span class="mono-label" id="sedes-count">0 SEDES</span>
+      </div>
+      <div class="table-scroll">
+        <table class="admin-table">
+          <thead><tr><th>Sede</th><th>Equipos</th><th>Marcas</th><th>Zonas</th><th>Actualizado</th></tr></thead>
+          <tbody id="sedes-body"><tr><td colspan="5" class="admin-empty">Sin inventario.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="workspace-foot">
+      <span>MAINBIT · CONTROL</span>
+      <span>ENTRA ID / SSO</span>
+      <span>2026</span>
+    </footer>
+  </main>
+
+  <script src="/static/admin.js?v=20261020b" defer></script>
+</body>
+</html>

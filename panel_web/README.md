@@ -44,7 +44,7 @@ En el `.env` del servidor, nunca en el chat:
 | `ALLOWED_DOMAIN` | Dominio corporativo, p. ej. `tuempresa.com` |
 | `ALLOWED_EMAILS` | Opcional: los 5 correos exactos, separados por coma |
 | `SESSION_SECRET` | `openssl rand -hex 32` |
-| `ADMIN_EMAILS` | Opcional; en esta versión no hay pantallas de admin |
+| `ADMIN_EMAILS` | Correo(s) con rol de administrador; debe coincidir con el login real |
 
 ### Configuración de la app en Entra
 
@@ -123,10 +123,7 @@ cp .env.example .env
 chmod 600 .env
 # edita .env con los datos de Entra y ALLOWED_DOMAIN/EMAILS
 
-# 3. Inventario (opcional, ver abajo)
-mkdir -p inventarios
-
-# 4. Levantar
+# 3. Levantar
 docker compose up -d --build
 docker compose ps
 docker compose logs -f panel-web
@@ -146,12 +143,41 @@ Microsoft; si el correo no está autorizado, verás “Tu cuenta no está autori
 - Mantén `panel-web` en la red privada; no expongas `panel-worker`.
 - Protege el panel de Dokploy con SSO/IP allowlist.
 
-## Inventario
+## Administración
 
-El pipeline usa los Excel de inventario para validar seriales y asignar sede.
-Colócalos en `panel_web/inventarios/` (se montan en `/data/inventarios:ro`).
-Sin inventario, los equipos pueden terminar en la carpeta de revisión; el
-panel funciona igual, pero la clasificación es menos precisa.
+La vista de administración vive en `https://pdf-separator.duckdns.org/admin`.
+Solo entra un usuario cuyo correo esté en `ADMIN_EMAILS`; el rol se actualiza al
+volver a iniciar sesión. Desde ahí se ve:
+
+- Cola y progreso en vivo, hoja por hoja, con el mapa de páginas y los lectores
+  OCR.
+- Inventario editable: importar Excel, alta/edición/baja de seriales, filtros
+  por sede/marca/estatus y exportación.
+- Resumen de sedes con número de equipos, marcas y zonas.
+
+El panel público **no usa** la base `separador_pdfs/panel/panel.db` del panel
+local. Usa su propia `panel_web.db` y escribe el inventario consolidado en
+`/data/inventarios/inventario_panel.xlsx`, que es el archivo que lee el
+pipeline.
+
+## Inventario y “desconocido”
+
+El pipeline clasifica por serial y sede leyendo
+`/data/inventarios/inventario_panel.xlsx`. Si ese archivo no existe o está
+vacío, **todos los equipos caen como desconocidos**.
+
+Para cargarlo:
+
+1. Entra a **Administración → Inventario**.
+2. **Importar Excel** con el inventario de seriales (el mismo que usa el panel
+   local).
+3. El panel lo guarda en la tabla `equipos` y regenera el Excel del pipeline
+   automáticamente.
+4. Los **jobs nuevos** ya se separan por sede. Los jobs viejos no se
+   reclasifican.
+
+No montes `./inventarios` como solo lectura: el panel necesita escribir el
+consolidado. El compose usa el volumen `panel_data` en `/data/inventarios`.
 
 ## Límites y capacidad
 
@@ -203,7 +229,7 @@ dst.close(); src.close()
 print('backup listo')
 PY
 
-# Estado de la cola (solo conteos; no hay panel admin público)
+# Estado de la cola (conteos desde la terminal)
 docker compose exec panel-web python3 - <<'PY'
 import sqlite3
 c = sqlite3.connect('/data/panel_web.db')

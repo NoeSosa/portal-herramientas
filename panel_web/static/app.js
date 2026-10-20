@@ -211,7 +211,11 @@ async function subirArchivos(archivos) {
 
   estado.subiendo = true;
   const boton = $("btn-elegir");
+  const zona = $("dropzone");
+  const visual = $("upload-visual");
   boton.disabled = true;
+  zona.classList.add("subiendo");
+  visual.hidden = false;
   let subidos = 0;
 
   try {
@@ -239,7 +243,9 @@ async function subirArchivos(archivos) {
   } finally {
     estado.subiendo = false;
     boton.disabled = false;
+    zona.classList.remove("subiendo");
     $("file-input").value = "";
+    window.setTimeout(() => { visual.hidden = true; }, 400);
   }
 }
 
@@ -299,6 +305,8 @@ async function iniciar() {
     document.querySelectorAll("[data-user-email]").forEach((nodo) => {
       nodo.textContent = me.email;
     });
+    const navAdmin = $("nav-admin");
+    if (navAdmin) navAdmin.hidden = me.role !== "admin";
     $("upload-hint").textContent =
       `PDF · máx. ${me.limits.max_upload_mb} MB · ${me.limits.max_pages} págs.`;
   } catch (error) {

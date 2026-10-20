@@ -71,6 +71,64 @@ def _paginas_leidas(job_dir: Path, job_id: str) -> int:
     return 0
 
 
+def _sincronizar_paginas(con: Any, job_id: str, job_dir: Path) -> int:
+    """Lleva los eventos JSONL del pipeline a `job_pages` para la vista admin."""
+    eventos: list[dict[str, Any]] = []
+    for nombre in (f"{job_id}.jsonl", f"{job_id}.ocr.jsonl"):
+        ruta = job_dir / "progress" / nombre
+        if not ruta.is_file():
+            continue
+        try:
+            with ruta.open("r", encoding="utf-8", errors="replace") as f:
+                for linea in f:
+                    linea = linea.strip()
+                    if not linea:
+                        continue
+                    try:
+                        ev = json.loads(linea)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(ev, dict):
+                        eventos.append(ev)
+        except OSError:
+            continue
+
+    paginas: dict[int, dict[str, Any]] = {}
+    for ev in eventos:
+        tipo = ev.get("tipo")
+        if tipo not in ("ocr_pagina", "pagina"):
+            continue
+        try:
+            pag = int(ev.get("pag") or 0)
+        except (TypeError, ValueError):
+            continue
+        if pag <= 0:
+            continue
+        datos = paginas.setdefault(pag, {})
+        for campo in ("pdf", "sn", "sede", "marca", "estado", "texto",
+                      "worker", "pag_total"):
+            if ev.get(campo) not in (None, ""):
+                datos[campo] = ev[campo]
+        if tipo == "ocr_pagina":
+            if ev.get("ms") is not None:
+                datos["ms"] = ev["ms"]
+            if ev.get("slot") is not None:
+                datos["slot"] = ev["slot"]
+            if ev.get("pid") is not None:
+                datos["pid"] = ev["pid"]
+        else:
+            if ev.get("ms_pagina") is not None:
+                datos["ms"] = ev["ms_pagina"]
+        if ev.get("ts") is not None:
+            datos["ts"] = ev["ts"]
+
+    for pag, datos in paginas.items():
+        db.upsert_pagina(con, job_id, pag, **datos)
+    if paginas:
+        con.commit()
+    return len(paginas)
+
+
 def _ultima_salida(job_dir: Path) -> Path | None:
     base = job_dir / "salida"
     if not base.is_dir():
@@ -151,7 +209,11 @@ def procesar(job: Any) -> None:
                     db.fallar_job(con, job_id, "El documento tardó demasiado y se canceló.")
                     logger.error("Job %s agotó el tiempo", job_id)
                     return
-                leidas = _paginas_leidas(job_dir, job_id)
+                try:
+                    leidas = _sincronizar_paginas(con, job_id, job_dir)
+                except Exception:
+                    logger.exception("No se pudo sincronizar job_pages de %s", job_id)
+                    leidas = _paginas_leidas(job_dir, job_id)
                 if leidas:
                     db.actualizar_progreso(
                         con, job_id, leidas,
@@ -160,6 +222,10 @@ def procesar(job: Any) -> None:
                 time.sleep(1)
 
             rc = proc.wait()
+            try:
+                _sincronizar_paginas(con, job_id, job_dir)
+            except Exception:
+                logger.exception("No se pudo sincronizar el final de %s", job_id)
             if parada:
                 db.fallar_job(con, job_id, "Procesamiento interrumpido.")
                 logger.info("Job %s interrumpido por parada del worker", job_id)
@@ -196,7 +262,8 @@ def procesar(job: Any) -> None:
             action="job_done", job_id=job_id, detail=f"{paginas} págs.",
         )
         logger.info("Job %s listo: %s", job_id, zip_path.name)
-        shutil.rmtree(entrada, ignore_errors=True)
+        # Conservamos input/procesados hasta la retención: Administración puede
+        # renderizar cualquier hoja del PDF original, no solo la que estaba en vivo.
     finally:
         con.close()
 

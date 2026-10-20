@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261020a">
+  <link rel="stylesheet" href="/static/style.css?v=20261020b">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -32,6 +32,10 @@
       <a class="nav-link" href="#cola">
         <span class="nav-num">02</span>
         <span>Cola y resultados</span>
+      </a>
+      <a class="nav-link" id="nav-admin" href="/admin" hidden>
+        <span class="nav-num">03</span>
+        <span>Administración</span>
       </a>
     </nav>
 
@@ -100,6 +104,12 @@
           <div class="dropzone-actions">
             <button class="btn btn-primary" type="button" id="btn-elegir">Elegir PDF</button>
             <span class="hint" id="upload-hint">PDF · máx. 50 MB</span>
+          </div>
+          <div class="upload-visual" id="upload-visual" hidden aria-hidden="true">
+            <span class="upload-sheet s1"></span>
+            <span class="upload-sheet s2"></span>
+            <span class="upload-sheet s3"></span>
+            <span class="upload-scan"></span>
           </div>
           <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
         </div>
@@ -210,6 +220,6 @@
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261020a" defer></script>
+  <script src="/static/app.js?v=20261020b" defer></script>
 </body>
 </html>

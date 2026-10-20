@@ -59,6 +59,34 @@ class AislamientoTest(unittest.TestCase):
         self.assertEqual(db.contar_paginas_hoy(self.con, int(self.ana["id"])), 100)
         self.assertEqual(db.contar_paginas_hoy(self.con, int(self.beto["id"])), 200)
 
+    def test_inventario_por_sede(self) -> None:
+        db.upsert_equipo(self.con, "ABC123", marca="HP", sede="Monterrey",
+                         zona="Norte", estatus="Activo")
+        db.upsert_equipo(self.con, "XYZ999", marca="Ricoh", sede="Guadalajara")
+        self.assertEqual(db.contar_equipos(self.con), 2)
+        self.assertEqual(db.contar_equipos(self.con, sede="Monterrey"), 1)
+        self.assertEqual(db.valores_equipos(self.con, "sede"),
+                         ["Guadalajara", "Monterrey"])
+        resumen = db.resumen_sedes(self.con)
+        self.assertEqual(resumen[0]["equipos"], 1)
+        self.assertTrue(db.borrar_equipo(self.con, "abc123"))
+        self.assertEqual(db.contar_equipos(self.con), 1)
+
+    def test_paginas_del_job(self) -> None:
+        self.crear(int(self.ana["id"]), self.ana["email"], "job-pag", 2)
+        db.upsert_pagina(self.con, "job-pag", 1, sn="ABC123", sede="Monterrey",
+                         estado="OK", texto="serial ABC123", worker="0-1",
+                         slot=0, pid=10, ms=900, ts=1.0)
+        db.upsert_pagina(self.con, "job-pag", 2, estado="A_REVISAR",
+                         worker="1-2", slot=1, pid=11, ms=1100, ts=2.0)
+        paginas = db.paginas_job(self.con, "job-pag")
+        self.assertEqual([p["pag"] for p in paginas], [1, 2])
+        self.assertEqual(paginas[0]["ocr"], 1)
+        self.assertEqual(paginas[1]["ocr"], 0)
+        self.assertEqual(db.resumen_paginas(self.con, "job-pag")["por_estado"],
+                         {"OK": 1, "A_REVISAR": 1})
+        self.assertEqual(len(db.trabajadores_job(self.con, "job-pag")), 2)
+
     def test_eta_cuenta_paginas_por_delante(self) -> None:
         self.crear(int(self.ana["id"]), self.ana["email"], "corriendo", 10)
         self.crear(int(self.beto["id"]), self.beto["email"], "esperando", 5)

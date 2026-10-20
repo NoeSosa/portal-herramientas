@@ -65,6 +65,58 @@ CREATE TABLE IF NOT EXISTS audit (
     detail   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts DESC);
+
+-- Detalle por hoja que publica el pipeline mientras procesa.
+CREATE TABLE IF NOT EXISTS job_pages (
+    job_id      TEXT NOT NULL,
+    pag         INTEGER NOT NULL,
+    pdf         TEXT,
+    pag_total   INTEGER,
+    sn          TEXT,
+    sede        TEXT,
+    marca       TEXT,
+    estado      TEXT,
+    texto       TEXT,
+    worker      TEXT,
+    slot        INTEGER,
+    pid         INTEGER,
+    ms          REAL,
+    ts          REAL,
+    PRIMARY KEY (job_id, pag)
+);
+CREATE INDEX IF NOT EXISTS idx_job_pages_job ON job_pages(job_id, pag);
+
+-- Inventario editable desde Administración. El panel exporta
+-- inventario_panel.xlsx para que el pipeline lo use como fuente de verdad.
+CREATE TABLE IF NOT EXISTS equipos (
+    sn               TEXT PRIMARY KEY,
+    marca            TEXT,
+    modelo           TEXT,
+    tipo             TEXT,
+    sede             TEXT,
+    zona             TEXT,
+    domicilio        TEXT,
+    ip_fisica        TEXT,
+    ip_hp            TEXT,
+    ip_ekm           TEXT,
+    perfil           TEXT,
+    estatus          TEXT,
+    contador_inicial TEXT,
+    fecha_alta       TEXT,
+    fecha_baja       TEXT,
+    sustituto_sn     TEXT,
+    origen_hoja      TEXT,
+    actualizado_en   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_equipos_sede ON equipos(sede);
+CREATE INDEX IF NOT EXISTS idx_equipos_marca ON equipos(marca);
+
+CREATE TABLE IF NOT EXISTS sedes (
+    nombre  TEXT PRIMARY KEY,
+    correos TEXT,
+    huellas TEXT,
+    activa  INTEGER DEFAULT 1
+);
 """
 
 ESTADOS_ACTIVOS = ("queued", "running")
@@ -353,3 +405,182 @@ def jobs_vencidos(con: sqlite3.Connection, dias: int) -> list[sqlite3.Row]:
 def borrar_job_por_id(con: sqlite3.Connection, job_id: str) -> None:
     con.execute("DELETE FROM jobs WHERE id=?", (job_id,))
     con.commit()
+
+
+# ---------------------------------------------------------------- administración
+def listar_jobs_admin(con: sqlite3.Connection, limite: int = 60) -> list[sqlite3.Row]:
+    return con.execute(
+        "SELECT j.*, u.name AS owner_name FROM jobs j"
+        " LEFT JOIN users u ON u.id=j.owner_id"
+        " ORDER BY CASE j.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,"
+        " j.created_at DESC LIMIT ?",
+        (int(limite),),
+    ).fetchall()
+
+
+def upsert_pagina(
+    con: sqlite3.Connection, job_id: str, pag: int, **campos: Any
+) -> None:
+    """Guarda/actualiza el estado de una hoja sin perder datos de la otra fase."""
+    permitidos = ("pdf", "pag_total", "sn", "sede", "marca", "estado", "texto",
+                  "worker", "slot", "pid", "ms", "ts")
+    datos = {c: campos.get(c) for c in permitidos}
+    con.execute(
+        "INSERT INTO job_pages(job_id, pag, pdf, pag_total, sn, sede, marca,"
+        " estado, texto, worker, slot, pid, ms, ts)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(job_id,pag) DO UPDATE SET"
+        " pdf=COALESCE(NULLIF(excluded.pdf,''), job_pages.pdf),"
+        " pag_total=COALESCE(excluded.pag_total, job_pages.pag_total),"
+        " sn=CASE WHEN excluded.sn IS NOT NULL AND excluded.sn<>''"
+        "          THEN excluded.sn ELSE job_pages.sn END,"
+        " sede=CASE WHEN excluded.sede IS NOT NULL AND excluded.sede<>''"
+        "            THEN excluded.sede ELSE job_pages.sede END,"
+        " marca=CASE WHEN excluded.marca IS NOT NULL AND excluded.marca<>''"
+        "             THEN excluded.marca ELSE job_pages.marca END,"
+        " estado=CASE WHEN excluded.estado IS NOT NULL AND excluded.estado<>''"
+        "              THEN excluded.estado ELSE job_pages.estado END,"
+        " texto=CASE WHEN excluded.texto IS NOT NULL AND excluded.texto<>''"
+        "             THEN excluded.texto ELSE job_pages.texto END,"
+        " worker=CASE WHEN excluded.worker IS NOT NULL AND excluded.worker<>''"
+        "              THEN excluded.worker ELSE job_pages.worker END,"
+        " slot=CASE WHEN excluded.slot IS NOT NULL AND excluded.slot>=0"
+        "            THEN excluded.slot ELSE job_pages.slot END,"
+        " pid=CASE WHEN excluded.pid IS NOT NULL AND excluded.pid>0"
+        "           THEN excluded.pid ELSE job_pages.pid END,"
+        " ms=COALESCE(excluded.ms, job_pages.ms),"
+        " ts=MAX(COALESCE(excluded.ts,0), COALESCE(job_pages.ts,0))",
+        (job_id, int(pag), datos["pdf"], datos["pag_total"], datos["sn"],
+         datos["sede"], datos["marca"], datos["estado"], datos["texto"],
+         datos["worker"], datos["slot"], datos["pid"], datos["ms"], datos["ts"]),
+    )
+
+
+def paginas_job(con: sqlite3.Connection, job_id: str) -> list[dict[str, Any]]:
+    filas = con.execute(
+        "SELECT pag, pdf, pag_total, sn, sede, marca, estado, worker, slot, pid,"
+        " ms, ts, CASE WHEN texto IS NOT NULL AND texto<>'' THEN 1 ELSE 0 END AS ocr"
+        " FROM job_pages WHERE job_id=? ORDER BY pag",
+        (job_id,),
+    ).fetchall()
+    return [dict(f) for f in filas]
+
+
+def resumen_paginas(con: sqlite3.Connection, job_id: str) -> dict[str, Any]:
+    filas = con.execute(
+        "SELECT pag, sn, sede, marca, estado, texto, ts FROM job_pages"
+        " WHERE job_id=? ORDER BY pag",
+        (job_id,),
+    ).fetchall()
+    por_estado: dict[str, int] = {}
+    por_sede: dict[str, int] = {}
+    seriales: dict[str, dict[str, str]] = {}
+    for f in filas:
+        estado = (f["estado"] or "").strip().upper()
+        if estado:
+            por_estado[estado] = por_estado.get(estado, 0) + 1
+        sede = (f["sede"] or "").strip() or "(sin sede)"
+        por_sede[sede] = por_sede.get(sede, 0) + 1
+        sn = (f["sn"] or "").strip()
+        if sn:
+            seriales[sn] = {"sn": sn, "sede": f["sede"] or "",
+                            "marca": f["marca"] or ""}
+    return {"por_estado": por_estado, "por_sede": por_sede,
+            "seriales": list(seriales.values())[:80]}
+
+
+def trabajadores_job(con: sqlite3.Connection, job_id: str) -> list[dict[str, Any]]:
+    filas = con.execute(
+        "SELECT slot, worker, COUNT(*) AS paginas, MAX(pag) AS ultima,"
+        " MAX(ts) AS ultimo_ts, AVG(ms) AS ms, MAX(pid) AS pid"
+        " FROM job_pages WHERE job_id=? AND (slot IS NOT NULL OR worker IS NOT NULL)"
+        " GROUP BY slot, worker ORDER BY slot, worker",
+        (job_id,),
+    ).fetchall()
+    return [dict(f) for f in filas]
+
+
+# ----------------------------------------------------------------- inventario
+CAMPOS_EQUIPO = ("marca", "modelo", "tipo", "sede", "zona", "domicilio",
+                 "ip_fisica", "ip_hp", "ip_ekm", "perfil", "estatus",
+                 "contador_inicial", "sustituto_sn", "origen_hoja")
+
+
+def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool, str]:
+    sn = (sn or "").strip().upper()
+    if not sn:
+        raise ValueError("serial vacío")
+    existia = con.execute("SELECT 1 FROM equipos WHERE sn=?", (sn,)).fetchone() is not None
+    cols = ["sn"] + [c for c in CAMPOS_EQUIPO if c in campos]
+    vals = [sn] + [("" if campos.get(c) is None else str(campos.get(c))) for c in cols[1:]]
+    sets = ", ".join(f"{c}=excluded.{c}" for c in cols[1:])
+    sufijo = (f" ON CONFLICT(sn) DO UPDATE SET {sets},"
+              " actualizado_en=datetime('now')" if sets else "")
+    con.execute(
+        f"INSERT INTO equipos({','.join(cols)}, actualizado_en)"
+        f" VALUES({','.join('?' * len(cols))}, datetime('now'))" + sufijo,
+        vals,
+    )
+    con.commit()
+    return (not existia), sn
+
+
+def borrar_equipo(con: sqlite3.Connection, sn: str) -> bool:
+    cur = con.execute("DELETE FROM equipos WHERE sn=?", ((sn or "").strip().upper(),))
+    con.commit()
+    return cur.rowcount > 0
+
+
+def _filtros_equipos(q=None, sede=None, marca=None, estatus=None, zona=None):
+    where, params = [], []
+    if q:
+        where.append("(sn LIKE ? OR marca LIKE ? OR modelo LIKE ? OR sede LIKE ?)")
+        params += [f"%{q}%"] * 4
+    for campo, valor in (("sede", sede), ("marca", marca),
+                         ("estatus", estatus), ("zona", zona)):
+        if valor:
+            where.append(f"{campo}=?")
+            params.append(valor)
+    return (" WHERE " + " AND ".join(where)) if where else "", params
+
+
+def contar_equipos(con: sqlite3.Connection, **filtros) -> int:
+    where, params = _filtros_equipos(**filtros)
+    return int(con.execute(
+        f"SELECT COUNT(*) AS n FROM equipos{where}", params
+    ).fetchone()["n"] or 0)
+
+
+def listar_equipos(
+    con: sqlite3.Connection, limite: int = 100, offset: int = 0,
+    orden: str = "sn", **filtros,
+) -> list[dict[str, Any]]:
+    where, params = _filtros_equipos(**filtros)
+    orden = orden if orden in ("sn", "marca", "modelo", "sede", "zona", "estatus") else "sn"
+    filas = con.execute(
+        f"SELECT sn, marca, modelo, tipo, sede, zona, domicilio, estatus,"
+        f" contador_inicial, origen_hoja, actualizado_en FROM equipos{where}"
+        f" ORDER BY {orden} LIMIT ? OFFSET ?",
+        params + [max(1, min(500, int(limite))), max(0, int(offset))],
+    ).fetchall()
+    return [dict(f) for f in filas]
+
+
+def valores_equipos(con: sqlite3.Connection, columna: str) -> list[str]:
+    columna = columna if columna in ("sede", "marca", "estatus", "zona") else "sede"
+    filas = con.execute(
+        f"SELECT DISTINCT {columna} AS v FROM equipos"
+        f" WHERE {columna} IS NOT NULL AND {columna}<>'' ORDER BY {columna}"
+    ).fetchall()
+    return [f["v"] for f in filas]
+
+
+def resumen_sedes(con: sqlite3.Connection) -> list[dict[str, Any]]:
+    filas = con.execute(
+        "SELECT COALESCE(NULLIF(sede,''),'(sin sede)') AS sede,"
+        " COUNT(*) AS equipos, COUNT(DISTINCT marca) AS marcas,"
+        " COUNT(DISTINCT zona) AS zonas, MAX(actualizado_en) AS actualizado"
+        " FROM equipos GROUP BY COALESCE(NULLIF(sede,''),'(sin sede)')"
+        " ORDER BY equipos DESC, sede"
+    ).fetchall()
+    return [dict(f) for f in filas]
