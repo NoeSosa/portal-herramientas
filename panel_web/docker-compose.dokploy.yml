@@ -1,0 +1,116 @@
+# =============================================================================
+# Panel web público — variante para Dokploy / Traefik
+# =============================================================================
+# Este archivo NO incluye Caddy: Dokploy/Traefik ya escucha 80/443.
+# En Dokploy usa este compose como "Compose Path":
+#   panel_web/docker-compose.dokploy.yml
+# Luego asigna el dominio al servicio `panel-web`, puerto 8000.
+#
+# Si despliegas fuera de Dokploy y necesitas TLS propio, usa docker-compose.yml
+# (incluye Caddy) en lugar de este archivo.
+# =============================================================================
+name: pdf-separator
+
+services:
+  panel-init:
+    image: alpine:3.19
+    container_name: pdfsep-init
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /data/users /data/inventarios
+        chown -R 1000:1000 /data
+        chmod -R 750 /data
+    volumes:
+      - panel_data:/data
+    networks:
+      - panelnet
+
+  # Descarga los modelos de PaddleOCR UNA vez al volumen. El worker corre luego
+  # con network_mode: none y ya no necesita internet.
+  panel-warmup:
+    image: pdf-separator-web:local
+    container_name: pdfsep-warmup
+    restart: "no"
+    command:
+      - python3
+      - -c
+      - |
+        from paddleocr import PaddleOCR
+        PaddleOCR(lang="en", use_angle_cls=False, show_log=False, cpu_threads=1)
+        print("modelos PaddleOCR listos")
+    environment:
+      HOME: /data
+    volumes:
+      - panel_data:/data
+    depends_on:
+      panel-init:
+        condition: service_completed_successfully
+      panel-web:
+        condition: service_started
+    networks:
+      - panelnet
+
+  panel-web:
+    build:
+      context: ..
+      dockerfile: panel_web/Dockerfile
+    image: pdf-separator-web:local
+    container_name: pdfsep-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8000"
+    volumes:
+      - panel_data:/data
+      - ./inventarios:/data/inventarios:ro
+    depends_on:
+      panel-init:
+        condition: service_completed_successfully
+    networks:
+      - panelnet
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    mem_limit: 1g
+
+  panel-worker:
+    image: pdf-separator-web:local
+    container_name: pdfsep-worker
+    restart: unless-stopped
+    command: ["python3", "-m", "app.worker"]
+    env_file:
+      - .env
+    volumes:
+      - panel_data:/data
+      - ./inventarios:/data/inventarios:ro
+    depends_on:
+      panel-init:
+        condition: service_completed_successfully
+      panel-warmup:
+        condition: service_completed_successfully
+    # El worker no necesita red: solo volumen y CPU. Los modelos ya están en /data.
+    network_mode: "none"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g
+    shm_size: "512m"
+    mem_limit: 4g
+
+networks:
+  panelnet:
+    driver: bridge
+
+volumes:
+  panel_data:

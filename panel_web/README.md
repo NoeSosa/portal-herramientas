@@ -77,9 +77,10 @@ El flujo es **authorization code + OIDC**. La app valida el `tid` contra
 4. Si el puerto 80 está bloqueado, usa el reto DNS-01 de Caddy o el Traefik de
    Dokploy con su propio certificado.
 
-Si ya usas Dokploy/Traefik para el 80/443, **quita el servicio `caddy`** del
-compose y publica `panel-web` por la red de Dokploy con su dominio y
-certificado. El resto del stack no cambia.
+Si ya usas Dokploy/Traefik para el 80/443, usa
+[`docker-compose.dokploy.yml`](docker-compose.dokploy.yml): no incluye Caddy y
+publica `panel-web` por la red de Dokploy. También puedes quitar el bloque
+`caddy` de `docker-compose.yml`, pero la variante de Dokploy evita ese paso.
 
 ## Despliegue
 
@@ -110,10 +111,12 @@ Microsoft; si el correo no está autorizado, verás “Tu cuenta no está autori
 
 ### Con Dokploy
 
-- Crea un proyecto/servicio de compose apuntando a `panel_web/docker-compose.yml`.
-- Elimina el servicio `caddy` y sus puertos.
-- Asigna el dominio `pdf-separator.duckdns.org` al servicio `panel-web` en el
-  puerto `8000`; Dokploy/Traefik gestiona TLS.
+- Crea un proyecto/servicio de **Docker Compose** (no Stack) apuntando a
+  `panel_web/docker-compose.dokploy.yml`; ya no incluye Caddy.
+- Carga las variables de `.env.example` en el entorno de Dokploy.
+- Asigna el dominio `pdf-separator.duckdns.org` al servicio `panel-web`, puerto
+  `8000`, HTTPS con `letsencrypt`; después **redespliega** para aplicar los
+  labels de Traefik.
 - Mantén `panel-web` en la red privada; no expongas `panel-worker`.
 - Protege el panel de Dokploy con SSO/IP allowlist.
 
