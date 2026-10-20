@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261020b">
-  <link rel="stylesheet" href="/static/admin.css?v=20261020b">
+  <link rel="stylesheet" href="/static/style.css?v=20261020c">
+  <link rel="stylesheet" href="/static/admin.css?v=20261020c">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -191,6 +191,8 @@
         <label>Sede<input id="inv-sede" name="sede"></label>
         <label>Zona<input id="inv-zona" name="zona"></label>
         <label>Domicilio<input id="inv-domicilio" name="domicilio"></label>
+        <label>Ubicación del equipo<input id="inv-ubicacion" name="ubicacion"></label>
+        <label>Piso<input id="inv-piso" name="piso" placeholder="editable después"></label>
         <label>Estatus<input id="inv-estatus" name="estatus"></label>
         <label>Contador inicial<input id="inv-contador" name="contador_inicial"></label>
         <div class="inventory-form-actions">
@@ -201,16 +203,22 @@
       </form>
 
       <div class="inventory-filters">
-        <input type="search" id="inv-q" placeholder="serial, marca, modelo o sede…">
+        <input type="search" id="inv-q" placeholder="serial, marca, modelo, sede, ubicación o piso…">
         <select id="inv-sede-filter"><option value="">todas las sedes</option></select>
         <select id="inv-marca-filter"><option value="">todas las marcas</option></select>
         <select id="inv-estatus-filter"><option value="">todos los estatus</option></select>
       </div>
 
+      <div class="inventory-danger">
+        <button class="btn-text danger" type="button" id="inv-delete-filtered">Borrar filtrados</button>
+        <button class="btn-text danger" type="button" id="inv-delete-all">Borrar todo</button>
+        <span class="mono-label" id="inv-delete-status"></span>
+      </div>
+
       <div class="table-scroll">
         <table class="admin-table inventory-table">
-          <thead><tr><th>Serial</th><th>Marca</th><th>Modelo</th><th>Sede</th><th>Zona</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
-          <tbody id="inv-table-body"><tr><td colspan="8" class="admin-empty">Sin seriales todavía.</td></tr></tbody>
+          <thead><tr><th>Serial</th><th>Marca</th><th>Modelo</th><th>Sede</th><th>Zona</th><th>Ubicación</th><th>Piso</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
+          <tbody id="inv-table-body"><tr><td colspan="10" class="admin-empty">Sin seriales todavía.</td></tr></tbody>
         </table>
       </div>
       <div class="pager">
@@ -243,6 +251,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261020b" defer></script>
+  <script src="/static/admin.js?v=20261020c" defer></script>
 </body>
 </html>

@@ -215,7 +215,7 @@ def _error_login(detalle: str, status_code: int) -> HTMLResponse:
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Acceso denegado</title>"
-        "<link rel='stylesheet' href='/static/style.css?v=20261020b'></head>"
+        "<link rel='stylesheet' href='/static/style.css?v=20261020c'></head>"
         "<body class='login-body'><main class='login-card'>"
         "<div class='login-brand'><span class='brand-mark'>PDF</span>"
         "<span class='brand-name'>Separador de PDFs</span></div>"
@@ -232,7 +232,7 @@ def _error_admin() -> HTMLResponse:
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>Administración</title>"
-        "<link rel='stylesheet' href='/static/style.css?v=20261020b'></head>"
+        "<link rel='stylesheet' href='/static/style.css?v=20261020c'></head>"
         "<body class='login-body'><main class='login-card'>"
         "<div class='login-brand'><span class='brand-mark'>PDF</span>"
         "<span class='brand-name'>Separador de PDFs</span></div>"
@@ -740,6 +740,40 @@ async def admin_guardar_equipo(
         return {"ok": ok, "sn": sn, "creado": creado,
                 "total": db.contar_equipos(con), "exportado": ok,
                 "detalle": detalle}
+    finally:
+        con.close()
+
+
+@app.post("/api/admin/equipos/borrar")
+async def admin_borrar_equipos(
+    request: Request, admin=Depends(admin_actual), _csrf=Depends(verificar_csrf)
+) -> dict[str, Any]:
+    datos = await request.json()
+    if (datos.get("confirm") or "").strip().upper() != "BORRAR":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirma la operación escribiendo BORRAR.",
+        )
+    filtros = {
+        "q": (datos.get("q") or "").strip() or None,
+        "sede": (datos.get("sede") or "").strip() or None,
+        "marca": (datos.get("marca") or "").strip() or None,
+        "estatus": (datos.get("estatus") or "").strip() or None,
+        "zona": (datos.get("zona") or "").strip() or None,
+    }
+    con = _conexion()
+    try:
+        antes = db.contar_equipos(con)
+        borrados = db.borrar_equipos(con, **filtros)
+        ok, detalle, _ = _exportar_inventario(con)
+        db.auditar(
+            con, user_id=int(admin["id"]), email=admin["email"],
+            action="inventario_borrado_masivo", ip=ip_cliente(request),
+            detail=f"{borrados} de {antes} · {filtros}",
+        )
+        return {"ok": ok, "borrados": borrados, "antes": antes,
+                "total": db.contar_equipos(con), "exportado": ok,
+                "detalle": detalle, "filtros": filtros}
     finally:
         con.close()
 

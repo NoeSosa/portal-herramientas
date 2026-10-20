@@ -61,8 +61,12 @@ class AislamientoTest(unittest.TestCase):
 
     def test_inventario_por_sede(self) -> None:
         db.upsert_equipo(self.con, "ABC123", marca="HP", sede="Monterrey",
-                         zona="Norte", estatus="Activo")
+                         zona="Norte", estatus="Activo",
+                         ubicacion="Centro de Justicia", piso="2")
         db.upsert_equipo(self.con, "XYZ999", marca="Ricoh", sede="Guadalajara")
+        equipos = db.listar_equipos(self.con, sede="Monterrey")
+        self.assertEqual(equipos[0]["ubicacion"], "Centro de Justicia")
+        self.assertEqual(equipos[0]["piso"], "2")
         self.assertEqual(db.contar_equipos(self.con), 2)
         self.assertEqual(db.contar_equipos(self.con, sede="Monterrey"), 1)
         self.assertEqual(db.valores_equipos(self.con, "sede"),
@@ -71,6 +75,14 @@ class AislamientoTest(unittest.TestCase):
         self.assertEqual(resumen[0]["equipos"], 1)
         self.assertTrue(db.borrar_equipo(self.con, "abc123"))
         self.assertEqual(db.contar_equipos(self.con), 1)
+
+    def test_borrado_masivo_por_filtro(self) -> None:
+        db.upsert_equipo(self.con, "A1", sede="Reynosa")
+        db.upsert_equipo(self.con, "A2", sede="Reynosa")
+        db.upsert_equipo(self.con, "A3", sede="Tampico")
+        self.assertEqual(db.borrar_equipos(self.con, sede="Reynosa"), 2)
+        self.assertEqual(db.contar_equipos(self.con), 1)
+        self.assertEqual(db.borrar_equipos(self.con), 1)
 
     def test_paginas_del_job(self) -> None:
         self.crear(int(self.ana["id"]), self.ana["email"], "job-pag", 2)

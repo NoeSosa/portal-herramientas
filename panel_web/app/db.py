@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS equipos (
     sede             TEXT,
     zona             TEXT,
     domicilio        TEXT,
+    ubicacion        TEXT,
+    piso             TEXT,
     ip_fisica        TEXT,
     ip_hp            TEXT,
     ip_ekm           TEXT,
@@ -137,10 +139,19 @@ def conectar(ruta: Path) -> sqlite3.Connection:
     return con
 
 
+def _migrar_equipos(con: sqlite3.Connection) -> None:
+    """Añade columnas nuevas a inventarios creados antes (idempotente)."""
+    cols = {f["name"] for f in con.execute("PRAGMA table_info(equipos)")}
+    for col in ("ubicacion", "piso"):
+        if col not in cols:
+            con.execute(f"ALTER TABLE equipos ADD COLUMN {col} TEXT")
+
+
 def inicializar(ruta: Path) -> None:
     con = conectar(ruta)
     try:
         con.executescript(ESQUEMA)
+        _migrar_equipos(con)
         con.commit()
     finally:
         con.close()
@@ -502,8 +513,9 @@ def trabajadores_job(con: sqlite3.Connection, job_id: str) -> list[dict[str, Any
 
 # ----------------------------------------------------------------- inventario
 CAMPOS_EQUIPO = ("marca", "modelo", "tipo", "sede", "zona", "domicilio",
-                 "ip_fisica", "ip_hp", "ip_ekm", "perfil", "estatus",
-                 "contador_inicial", "sustituto_sn", "origen_hoja")
+                 "ubicacion", "piso", "ip_fisica", "ip_hp", "ip_ekm",
+                 "perfil", "estatus", "contador_inicial", "sustituto_sn",
+                 "origen_hoja")
 
 
 def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool, str]:
@@ -531,11 +543,22 @@ def borrar_equipo(con: sqlite3.Connection, sn: str) -> bool:
     return cur.rowcount > 0
 
 
+def borrar_equipos(con: sqlite3.Connection, **filtros) -> int:
+    """Borra todo lo que coincida. Sin filtros equivale a vaciar el inventario."""
+    where, params = _filtros_equipos(**filtros)
+    cur = con.execute(f"DELETE FROM equipos{where}", params)
+    con.commit()
+    return int(cur.rowcount or 0)
+
+
 def _filtros_equipos(q=None, sede=None, marca=None, estatus=None, zona=None):
     where, params = [], []
     if q:
-        where.append("(sn LIKE ? OR marca LIKE ? OR modelo LIKE ? OR sede LIKE ?)")
-        params += [f"%{q}%"] * 4
+        where.append(
+            "(sn LIKE ? OR marca LIKE ? OR modelo LIKE ? OR sede LIKE ?"
+            " OR ubicacion LIKE ? OR piso LIKE ?)"
+        )
+        params += [f"%{q}%"] * 6
     for campo, valor in (("sede", sede), ("marca", marca),
                          ("estatus", estatus), ("zona", zona)):
         if valor:
@@ -558,8 +581,9 @@ def listar_equipos(
     where, params = _filtros_equipos(**filtros)
     orden = orden if orden in ("sn", "marca", "modelo", "sede", "zona", "estatus") else "sn"
     filas = con.execute(
-        f"SELECT sn, marca, modelo, tipo, sede, zona, domicilio, estatus,"
-        f" contador_inicial, origen_hoja, actualizado_en FROM equipos{where}"
+        f"SELECT sn, marca, modelo, tipo, sede, zona, domicilio, ubicacion,"
+        f" piso, estatus, contador_inicial, origen_hoja, actualizado_en"
+        f" FROM equipos{where}"
         f" ORDER BY {orden} LIMIT ? OFFSET ?",
         params + [max(1, min(500, int(limite))), max(0, int(offset))],
     ).fetchall()

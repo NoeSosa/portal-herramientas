@@ -19,7 +19,7 @@ from openpyxl import Workbook, load_workbook
 from . import db
 
 COLUMNAS_EXCEL = ["Serie", "Marca", "Modelo", "SEDE", "ZONA", "Domicilio",
-                  "Estatus", "Contador inicial"]
+                  "Ubicación", "Piso", "Estatus", "Contador inicial"]
 
 
 def _norm(valor: Any) -> str:
@@ -43,11 +43,19 @@ def _mapa_columnas(cabeceras: list[Any]) -> dict[str, int]:
             mapa.setdefault("modelo", i)
         elif "sede" in n:
             mapa.setdefault("sede", i)
+        elif n in {"localidad", "ciudad", "municipio"}:
+            mapa.setdefault("localidad", i)
         elif "zona" in n:
             mapa.setdefault("zona", i)
+        elif "ubicacion" in n or n in {"area", "área"}:
+            mapa.setdefault("ubicacion", i)
+        elif n == "piso" or "nivel" in n or "planta" in n:
+            mapa.setdefault("piso", i)
+        elif "ip" in n and ("direccion" in n or n == "ip"):
+            mapa.setdefault("ip_fisica", i)
         elif "domicilio" in n or "direccion" in n:
             mapa.setdefault("domicilio", i)
-        elif "estatus" in n or "estado" in n:
+        elif n in {"estatus", "status"}:
             mapa.setdefault("estatus", i)
         elif "contador" in n:
             mapa.setdefault("contador_inicial", i)
@@ -95,13 +103,14 @@ def importar_xlsx(con: sqlite3.Connection, ruta: Path) -> dict[str, int]:
                     if idx is None or idx >= len(fila):
                         return ""
                     return _texto(fila[idx])
-                sede = valor("sede")
+                sede = valor("sede") or valor("localidad")
                 domicilio = valor("domicilio")
                 if not sede and domicilio:
                     sede = domicilio
                 datos = {
                     "marca": valor("marca"), "modelo": valor("modelo"),
                     "sede": sede, "zona": valor("zona"), "domicilio": domicilio,
+                    "ubicacion": valor("ubicacion"), "piso": valor("piso"),
                     "estatus": valor("estatus"),
                     "contador_inicial": valor("contador_inicial"),
                     "origen_hoja": f"{ruta.name}::{ws.title}",
@@ -121,8 +130,8 @@ def importar_xlsx(con: sqlite3.Connection, ruta: Path) -> dict[str, int]:
 def exportar_xlsx(con: sqlite3.Connection, destino: Path) -> int:
     """Regenera el Excel consolidado que lee el pipeline. Devuelve filas."""
     filas = con.execute(
-        "SELECT sn, marca, modelo, sede, zona, domicilio, estatus,"
-        " contador_inicial FROM equipos ORDER BY sn"
+        "SELECT sn, marca, modelo, sede, zona, domicilio, ubicacion, piso,"
+        " estatus, contador_inicial FROM equipos ORDER BY sn"
     ).fetchall()
     wb = Workbook()
     ws = wb.active
@@ -130,7 +139,8 @@ def exportar_xlsx(con: sqlite3.Connection, destino: Path) -> int:
     ws.append(COLUMNAS_EXCEL)
     for f in filas:
         ws.append([f["sn"], f["marca"] or "", f["modelo"] or "", f["sede"] or "",
-                   f["zona"] or "", f["domicilio"] or "", f["estatus"] or "",
+                   f["zona"] or "", f["domicilio"] or "", f["ubicacion"] or "",
+                   f["piso"] or "", f["estatus"] or "",
                    f["contador_inicial"] or ""])
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)

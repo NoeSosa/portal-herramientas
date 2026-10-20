@@ -7,6 +7,7 @@ const A = {
   invOffset: 0,
   invLimit: 50,
   invTotal: 0,
+  invAll: 0,
   editing: null,
   tick: 0,
 };
@@ -142,6 +143,8 @@ function conectarEventos() {
   });
   $("inv-import").addEventListener("click", () => $("inv-file").click());
   $("inv-export").addEventListener("click", exportarInventario);
+  $("inv-delete-filtered").addEventListener("click", () => borrarInventario(false));
+  $("inv-delete-all").addEventListener("click", () => borrarInventario(true));
 
   let timerBusqueda = null;
   $("inv-q").addEventListener("input", () => {
@@ -460,6 +463,7 @@ async function cargarEquipos() {
   try {
     const d = await api(`/api/admin/equipos?${params}`);
     A.invTotal = d.total;
+    A.invAll = d.todos;
     set("inv-count", `${d.total} SERIAL${d.total === 1 ? "" : "ES"}`);
     set("inv-range", `${d.total ? A.invOffset + 1 : 0}–${A.invOffset + d.equipos.length} de ${d.total}`);
     $("inv-prev").disabled = A.invOffset <= 0;
@@ -476,7 +480,7 @@ function pintarEquipos(equipos) {
   if (!equipos.length) {
     const tr = el("tr");
     const td = el("td", "admin-empty", "Sin seriales todavía. Importa el Excel o da de alta uno.");
-    td.colSpan = 8;
+    td.colSpan = 10;
     tr.appendChild(td);
     body.appendChild(tr);
     return;
@@ -494,7 +498,8 @@ function pintarEquipos(equipos) {
     tr.append(
       el("td", "", e.sn), el("td", "", e.marca || "—"),
       el("td", "", e.modelo || "—"), el("td", "", e.sede || "—"),
-      el("td", "", e.zona || "—"), el("td", "", e.estatus || "—"),
+      el("td", "", e.zona || "—"), el("td", "", e.ubicacion || "—"),
+      el("td", "", e.piso || "—"), el("td", "", e.estatus || "—"),
       el("td", "", (e.origen_hoja || "—").slice(0, 36)), acciones,
     );
     body.appendChild(tr);
@@ -503,7 +508,7 @@ function pintarEquipos(equipos) {
 
 function editarEquipo(e) {
   A.editing = e.sn;
-  for (const campo of ["sn", "marca", "modelo", "sede", "zona", "domicilio", "estatus", "contador_inicial"]) {
+  for (const campo of ["sn", "marca", "modelo", "sede", "zona", "domicilio", "ubicacion", "piso", "estatus", "contador_inicial"]) {
     const input = $(`inv-${campo === "contador_inicial" ? "contador" : campo}`);
     if (input) input.value = e[campo] || "";
   }
@@ -531,6 +536,8 @@ async function guardarEquipo(evento) {
     sede: $("inv-sede").value.trim(),
     zona: $("inv-zona").value.trim(),
     domicilio: $("inv-domicilio").value.trim(),
+    ubicacion: $("inv-ubicacion").value.trim(),
+    piso: $("inv-piso").value.trim(),
     estatus: $("inv-estatus").value.trim(),
     contador_inicial: $("inv-contador").value.trim(),
   };
@@ -588,6 +595,47 @@ async function subirExcel(file) {
   } catch (error) {
     set("inv-status", error.message);
     $("inv-file").value = "";
+  }
+}
+
+async function borrarInventario(todo) {
+  const filtros = {
+    q: $("inv-q").value.trim(),
+    sede: $("inv-sede-filter").value,
+    marca: $("inv-marca-filter").value,
+    estatus: $("inv-estatus-filter").value,
+    zona: "",
+  };
+  const hayFiltros = !!(filtros.q || filtros.sede || filtros.marca || filtros.estatus);
+  if (!todo && !hayFiltros) {
+    set("inv-delete-status", "Elige al menos un filtro o usa Borrar todo.");
+    return;
+  }
+  const resumen = todo
+    ? `TODO el inventario (${A.invAll} seriales)`
+    : `los seriales filtrados (${A.invTotal} coincidencias)`;
+  const tecleado = window.prompt(
+    `Vas a borrar ${resumen}. Escribe BORRAR para confirmar:`,
+    "",
+  );
+  if ((tecleado || "").trim().toUpperCase() !== "BORRAR") return;
+  const cuerpo = todo
+    ? {q: "", sede: "", marca: "", estatus: "", zona: "", confirm: "BORRAR"}
+    : {...filtros, confirm: "BORRAR"};
+  try {
+    const d = await api("/api/admin/equipos/borrar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(cuerpo),
+    });
+    set("inv-delete-status",
+      `${d.borrados} borrados · quedan ${d.total} · ${d.ok ? "Excel actualizado" : (d.detalle || "error al exportar")}`);
+    A.invOffset = 0;
+    await cargarInventario();
+    await cargarOverview();
+    await cargarSedes();
+  } catch (error) {
+    set("inv-delete-status", error.message);
   }
 }
 

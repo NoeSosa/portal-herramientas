@@ -170,11 +170,17 @@ Para cargarlo:
 
 1. Entra a **Administración → Inventario**.
 2. **Importar Excel** con el inventario de seriales (el mismo que usa el panel
-   local).
+   local). Columnas reconocidas: `Serie`/`SN`, `Marca`, `Modelo`, `SEDE`
+   (o `LOCALIDAD`), `ZONA`, `Domicilio`, `Ubicación de Equipo`, `Piso`,
+   `Estatus`.
 3. El panel lo guarda en la tabla `equipos` y regenera el Excel del pipeline
    automáticamente.
 4. Los **jobs nuevos** ya se separan por sede. Los jobs viejos no se
    reclasifican.
+
+Para deshacer una importación mala usa **Borrar filtrados** (con sede, marca o
+estatus seleccionado) o **Borrar todo**; en ambos casos hay que escribir
+`BORRAR` para confirmar y el Excel del pipeline se regenera.
 
 No montes `./inventarios` como solo lectura: el panel necesita escribir el
 consolidado. El compose usa el volumen `panel_data` en `/data/inventarios`.

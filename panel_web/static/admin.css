@@ -516,7 +516,29 @@
   margin-top: 20px;
 }
 
+.inventory-table { min-width: 1100px; }
+
 .inventory-table td:nth-child(1) { color: var(--navy); }
+
+.inventory-danger {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 8px 0 8px 11px;
+  border-left: 2px solid var(--red);
+}
+
+.btn-text.danger {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.btn-text.danger:hover {
+  background: var(--red-soft);
+  color: var(--red);
+}
 
 .pager {
   display: flex;
