@@ -7,6 +7,9 @@ sus resultados. No puede ver ni descargar los de otro.
 Es un servicio **separado** del panel clásico. El panel clásico sigue siendo la
 consola de administración por túnel SSH.
 
+La dirección visual (azul marino, papel cálido, IBM Plex y tabla editorial) está
+documentada en [`DESIGN.md`](DESIGN.md).
+
 ## Arquitectura
 
 ```text

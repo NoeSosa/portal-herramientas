@@ -59,7 +59,7 @@ function formatoFecha(iso) {
 function formatoDuracion(segundos) {
   const s = Number(segundos || 0);
   if (!s || s <= 0) return "—";
-  if (s < 60) return "menos de 1 min";
+  if (s < 60) return "< 1 min";
   const minutos = Math.round(s / 60);
   if (minutos < 60) return `~${minutos} min`;
   const horas = Math.floor(minutos / 60);
@@ -79,28 +79,27 @@ function etiquetaEstado(estadoJob) {
 
 function detalleEstado(job) {
   if (job.status === "queued") {
-    const delante = job.position > 0
-      ? `${job.position} documento${job.position === 1 ? "" : "s"} delante`
-      : "Siguiente en la cola";
-    return `${delante} · ${job.message || "Esperando turno"}`;
+    if (job.position > 0) {
+      return `${job.position} doc. delante`;
+    }
+    return "Siguiente en cola";
   }
-  if (job.status === "running") {
-    return `Procesando ${job.pages_done}/${job.pages} páginas`;
-  }
-  if (job.status === "done") {
-    return `Listo · ${job.pages} página${job.pages === 1 ? "" : "s"} · ${formatoFecha(job.finished_at)}`;
-  }
-  if (job.status === "error") {
-    return job.error || "No se pudo procesar el documento.";
-  }
+  if (job.status === "running") return "En proceso";
+  if (job.status === "done") return "Expediente listo";
+  if (job.status === "error") return job.error || "No se pudo procesar";
   return job.message || "";
 }
 
 function aplicarJob(nodo, job) {
   nodo.classList.add(job.status);
   nodo.querySelector(".job-name").textContent = job.filename;
+  nodo.querySelector(".job-name").title = job.filename;
   nodo.querySelector(".job-meta").textContent =
-    `${job.pages} página${job.pages === 1 ? "" : "s"} · ${formatoBytes(job.size)} · ${formatoFecha(job.created_at)}`;
+    `${formatoFecha(job.created_at)} · ${formatoBytes(job.size)}`;
+  nodo.querySelector(".job-pages").textContent = String(job.pages);
+  const detalle = detalleEstado(job);
+  nodo.querySelector(".job-status").textContent = detalle;
+  nodo.querySelector(".job-status").title = detalle;
 
   const badge = nodo.querySelector(".status-badge");
   badge.textContent = etiquetaEstado(job.status);
@@ -108,13 +107,16 @@ function aplicarJob(nodo, job) {
 
   const track = nodo.querySelector(".progress-track");
   const barra = nodo.querySelector(".progress-bar");
-  const progreso = job.status === "done" ? 100 : Math.max(0, Math.min(100, Number(job.progress || 0)));
+  const progreso = job.status === "done"
+    ? 100
+    : Math.max(0, Math.min(100, Number(job.progress || 0)));
   barra.style.transform = `scaleX(${progreso / 100})`;
   track.setAttribute("aria-valuenow", String(progreso));
 
-  nodo.querySelector(".job-status").textContent = detalleEstado(job);
+  nodo.querySelector(".job-progress").textContent =
+    `${job.pages_done}/${job.pages}`;
   nodo.querySelector(".job-eta").textContent =
-    job.status === "done" ? "Disponible" :
+    job.status === "done" ? "Listo" :
     job.status === "error" ? "—" :
     formatoDuracion(job.eta_seconds);
 
@@ -137,8 +139,12 @@ function aplicarJob(nodo, job) {
 function renderJobs() {
   const contenedor = $("jobs");
   const vacio = $("empty-state");
-  contenedor.textContent = "";
+  const contador = $("jobs-count");
   const plantilla = $("job-template");
+
+  contenedor.textContent = "";
+  contador.textContent =
+    `${estado.jobs.length} DOCUMENTO${estado.jobs.length === 1 ? "" : "S"}`;
 
   if (!estado.jobs.length) {
     vacio.hidden = false;
@@ -153,14 +159,19 @@ function renderJobs() {
 
 function renderCola() {
   const cola = estado.queue || { active: 0, pages: 0, eta_seconds: 0 };
+  const enCurso = estado.jobs.filter((j) => j.status === "running").length;
+  const enEspera = estado.jobs.filter((j) => j.status === "queued").length;
   const activos = Number(cola.active || 0);
-  $("queue-count").textContent = String(activos);
-  $("queue-docs").textContent = String(activos);
+
+  $("queue-count").textContent = String(enEspera);
+  $("queue-docs").textContent = String(enCurso);
   $("queue-pages").textContent = String(cola.pages || 0);
   $("queue-eta").textContent = activos ? formatoDuracion(cola.eta_seconds) : "—";
-  $("queue-note").textContent = activos
-    ? `${activos} documento${activos === 1 ? "" : "s"} en cola. El tiempo es aproximado y puede variar según el tamaño de los PDFs.`
-    : "Sin trabajos en cola.";
+  $("queue-note").textContent = enEspera
+    ? `${enEspera} documento${enEspera === 1 ? "" : "s"} en espera.`
+    : enCurso
+      ? "Procesando ahora."
+      : "Sin trabajos en cola.";
 }
 
 async function cargarJobs(silencioso = false) {
@@ -212,13 +223,17 @@ async function subirArchivos(archivos) {
       subidos++;
     }
     mostrarEstado(
-      subidos === 1 ? "Documento agregado a la cola." : `${subidos} documentos agregados a la cola.`,
+      subidos === 1
+        ? "Documento agregado a la cola."
+        : `${subidos} documentos agregados a la cola.`,
       "ok",
     );
     await cargarJobs(true);
   } catch (error) {
     mostrarEstado(
-      subidos ? `${subidos} documento(s) subido(s). ${error.message}` : error.message,
+      subidos
+        ? `${subidos} documento(s) subido(s). ${error.message}`
+        : error.message,
       "error",
     );
   } finally {
@@ -281,7 +296,9 @@ async function iniciar() {
   try {
     const me = await api("/api/me");
     estado.csrf = me.csrf;
-    $("user-email").textContent = me.email;
+    document.querySelectorAll("[data-user-email]").forEach((nodo) => {
+      nodo.textContent = me.email;
+    });
     $("upload-hint").textContent =
       `PDF · máx. ${me.limits.max_upload_mb} MB · ${me.limits.max_pages} págs.`;
   } catch (error) {
@@ -294,7 +311,11 @@ async function iniciar() {
   await cargarJobs(false);
 
   estado.timer = window.setInterval(() => {
-    if (!document.hidden) cargarJobs(true);
+    if (document.hidden) return;
+    const activo = document.activeElement;
+    // No reemplazar la tabla mientras el usuario está enfocando una acción.
+    if (activo && activo.closest && activo.closest("#jobs")) return;
+    cargarJobs(true);
   }, 3000);
 }
 

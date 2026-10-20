@@ -86,9 +86,13 @@ async def cabeceras_seguridad(request: Request, call_next):
         "geolocation=(), microphone=(), camera=(), payment=()"
     )
     respuesta.headers["Content-Security-Policy"] = (
-        "default-src 'self'; img-src 'self' data:; style-src 'self'; "
-        "script-src 'self'; connect-src 'self'; object-src 'none'; "
-        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        "default-src 'self'; img-src 'self' data:; "
+        "style-src 'self' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "script-src 'self'; "
+        "connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; "
+        "object-src 'none'; frame-ancestors 'none'; "
+        "base-uri 'self'; form-action 'self'"
     )
     respuesta.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     respuesta.headers["Cross-Origin-Resource-Policy"] = "same-origin"

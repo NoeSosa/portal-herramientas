@@ -5,37 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>Separador de PDFs · Acceso</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login-body">
-  <main class="login-card">
-    <div class="login-brand">
-      <span class="brand-mark" aria-hidden="true">PDF</span>
-      <span class="brand-name">Separador de PDFs</span>
-    </div>
+  <main class="login-shell">
+    <section class="login-art" aria-label="Separador de PDFs">
+      <div class="login-art-top">
+        <span class="mono-label">MAINBIT / PDF PIPELINE</span>
+        <span class="mono-label">03 — 2026</span>
+      </div>
 
-    <h1>Tus documentos, separados por sede</h1>
-    <p class="login-lead">
-      Sube tus escaneos, deja que el OCR identifique cada equipo y descarga
-      los resultados organizados. Solo tú puedes ver tus documentos.
-    </p>
+      <div class="login-art-center">
+        <p class="art-index">01 / 05</p>
+        <h1>Separa.<br>Clasifica.<br>Entrega.</h1>
+        <p class="art-note">
+          Del escaneo al expediente por sede, sin hojas sueltas ni carpetas
+          cruzadas. Un flujo privado para cada persona.
+        </p>
+      </div>
 
-    <a class="btn-microsoft" href="/auth/login">
-      <span class="ms-logo" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-      </span>
-      Continuar con Microsoft
-    </a>
+      <div class="login-art-foot">
+        <span class="mono-label">DOCUMENTOS PRIVADOS</span>
+        <span class="mono-label">OPERACIÓN INTERNA</span>
+      </div>
+    </section>
 
-    <p class="login-note">
-      Acceso restringido a las cuentas corporativas autorizadas.
-      Si no puedes entrar, pide acceso al administrador del panel.
-    </p>
+    <section class="login-panel">
+      <div class="login-box">
+        <p class="mono-label">ACCESO RESTRINGIDO</p>
+        <h2>Separador<br>de PDFs</h2>
+        <p class="login-lead">
+          Entra con tu cuenta corporativa. Solo verás tus documentos y tus
+          resultados.
+        </p>
+
+        <a class="btn-microsoft" href="/auth/login">
+          <span class="ms-logo" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </span>
+          <span>Continuar con Microsoft</span>
+          <span class="ms-arrow" aria-hidden="true">→</span>
+        </a>
+
+        <div class="login-separator" aria-hidden="true"></div>
+
+        <p class="login-note">
+          Acceso mediante Microsoft Entra ID. Si tu cuenta no entra, pide al
+          administrador que revise tu asignación y tu dominio.
+        </p>
+
+        <div class="login-meta">
+          <span class="mono-label">SSO / OIDC</span>
+          <span class="mono-label">MAINBIT</span>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="login-footer">
     <span>Conexión cifrada</span>
-    <span aria-hidden="true">·</span>
     <span>Documentos privados por usuario</span>
   </footer>
 </body>

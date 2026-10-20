@@ -4,127 +4,208 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Separador de PDFs</title>
+  <title>Separador de PDFs · Mainbit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a class="brand" href="/" aria-label="Inicio">
-        <span class="brand-mark" aria-hidden="true">PDF</span>
-        <span class="brand-name">Separador de PDFs</span>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Mainbit, Separador de PDFs">
+      <span class="brand-mark" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </span>
+      <span class="brand-text">
+        <span class="brand-kicker">MAINBIT</span>
+        <span class="brand-name">Separador</span>
+      </span>
+    </a>
+
+    <nav class="nav" aria-label="Secciones">
+      <a class="nav-link is-active" href="#ingreso">
+        <span class="nav-num">01</span>
+        <span>Ingreso</span>
       </a>
+      <a class="nav-link" href="#cola">
+        <span class="nav-num">02</span>
+        <span>Cola y resultados</span>
+      </a>
+    </nav>
 
-      <div class="user-menu">
-        <span class="user-email" id="user-email">—</span>
-        <a class="btn ghost small" href="/auth/logout">Salir</a>
-      </div>
+    <div class="sidebar-meta">
+      <p class="mono-label">OPERACIÓN</p>
+      <p class="sidebar-status"><span class="status-dot" aria-hidden="true"></span> Servicio activo</p>
+      <p class="sidebar-user" data-user-email>—</p>
     </div>
-  </header>
 
-  <main class="page">
-    <section class="intro">
-      <p class="eyebrow">Panel personal</p>
-      <h1>Tus documentos, separados por sede</h1>
-      <p class="lead">
-        Sube tus PDFs y el panel los procesa en orden. Puedes cerrar la pestaña:
-        el trabajo sigue en el servidor y aquí verás cuánto falta.
-      </p>
-    </section>
+    <div class="sidebar-foot">
+      <span class="mono-label">PDF / 03</span>
+      <a class="logout" href="/auth/logout">Salir <span aria-hidden="true">↗</span></a>
+    </div>
+  </aside>
 
-    <section class="grid-top">
-      <div class="card upload-card">
-        <div class="card-head">
-          <h2>Subir documentos</h2>
-          <span class="hint" id="upload-hint">PDF · máx. 50 MB</span>
+  <main class="workspace" id="main">
+    <header class="workspace-head">
+      <div class="head-top">
+        <span class="mono-label">HERRAMIENTAS / 03</span>
+        <span class="mono-label">USO INTERNO · MX</span>
+      </div>
+      <div class="head-main">
+        <div>
+          <h1>Documentos</h1>
+          <p class="lede">
+            Un solo flujo para separar escaneos, identificar cada equipo y
+            entregar los resultados por sede.
+          </p>
+        </div>
+        <div class="head-side">
+          <span class="mono-label">SESIÓN</span>
+          <span class="head-user" data-user-email>—</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="ingest" id="ingreso" aria-labelledby="ingreso-title">
+      <div class="section-label">
+        <span class="section-num">01</span>
+        <span class="mono-label">INGRESO</span>
+      </div>
+
+      <div class="ingest-grid">
+        <div class="ingest-copy">
+          <h2 id="ingreso-title">Sube el lote.</h2>
+          <p>
+            Arrastra uno o varios PDFs escaneados. El panel los pone en cola,
+            muestra el avance y te avisa cuando el ZIP está listo.
+          </p>
+          <dl class="ingest-specs">
+            <div><dt>Formato</dt><dd>PDF</dd></div>
+            <div><dt>Tamaño</dt><dd>50 MB</dd></div>
+            <div><dt>Páginas</dt><dd>500</dd></div>
+            <div><dt>Retención</dt><dd>30 días</dd></div>
+          </dl>
         </div>
 
         <div class="dropzone" id="dropzone" tabindex="0" role="button"
              aria-label="Arrastra tus PDFs o elige archivos">
-          <div class="dropzone-icon" aria-hidden="true">↑</div>
-          <p class="dropzone-title">Arrastra tus PDFs aquí</p>
-          <p class="dropzone-sub">o elige los archivos desde tu equipo</p>
-          <button class="btn primary" type="button" id="btn-elegir">Elegir archivos</button>
+          <div class="dropzone-top">
+            <span class="mono-label">ARRASTRA AQUÍ</span>
+            <span class="dropzone-arrow" aria-hidden="true">↓</span>
+          </div>
+          <p class="dropzone-title">Selecciona tus documentos</p>
+          <p class="dropzone-sub">o suéltalos sobre esta área</p>
+          <div class="dropzone-actions">
+            <button class="btn btn-primary" type="button" id="btn-elegir">Elegir PDF</button>
+            <span class="hint" id="upload-hint">PDF · máx. 50 MB</span>
+          </div>
           <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
         </div>
-
-        <p class="form-status" id="upload-status" role="status" aria-live="polite"></p>
       </div>
 
-      <aside class="card queue-card" aria-labelledby="queue-title">
-        <div class="card-head">
-          <h2 id="queue-title">Tu cola</h2>
-          <span class="pill" id="queue-count">0</span>
-        </div>
-        <div class="queue-metrics">
-          <div>
-            <span class="metric-label">Documentos activos</span>
-            <strong id="queue-docs">0</strong>
-          </div>
-          <div>
-            <span class="metric-label">Páginas en tu cola</span>
-            <strong id="queue-pages">0</strong>
-          </div>
-          <div>
-            <span class="metric-label">Tiempo estimado</span>
-            <strong id="queue-eta">—</strong>
-          </div>
-        </div>
-        <p class="queue-note" id="queue-note">Sin trabajos en cola.</p>
-      </aside>
+      <p class="form-status" id="upload-status" role="status" aria-live="polite"></p>
     </section>
 
-    <section class="jobs-section" aria-labelledby="jobs-title">
-      <div class="section-head">
+    <section class="queue-strip" aria-label="Resumen de la cola">
+      <div class="queue-stat">
+        <span class="mono-label">EN CURSO</span>
+        <strong id="queue-docs">0</strong>
+        <span class="queue-sub">documentos</span>
+      </div>
+      <div class="queue-stat">
+        <span class="mono-label">PÁGINAS</span>
+        <strong id="queue-pages">0</strong>
+        <span class="queue-sub">en tu cola</span>
+      </div>
+      <div class="queue-stat">
+        <span class="mono-label">TIEMPO EST.</span>
+        <strong id="queue-eta">—</strong>
+        <span class="queue-sub">aproximado</span>
+      </div>
+      <div class="queue-state">
+        <span class="queue-count" id="queue-count">0</span>
         <div>
-          <h2 id="jobs-title">Mis documentos</h2>
-          <p class="section-sub">Solo tú puedes ver y descargar estos archivos.</p>
+          <span class="mono-label">EN ESPERA</span>
+          <p id="queue-note">Sin trabajos en cola.</p>
         </div>
-        <button class="btn ghost small" type="button" id="btn-refresh">Actualizar</button>
-      </div>
-
-      <div id="jobs" class="jobs-list"></div>
-
-      <div class="empty-state" id="empty-state" hidden>
-        <div class="empty-icon" aria-hidden="true">PDF</div>
-        <h3>Aún no has subido documentos</h3>
-        <p>Arrastra un PDF arriba o elige un archivo para empezar.</p>
       </div>
     </section>
+
+    <section class="jobs-section" id="cola" aria-labelledby="cola-title">
+      <div class="section-head">
+        <div class="section-label">
+          <span class="section-num">02</span>
+          <span class="mono-label" id="cola-title">COLA Y RESULTADOS</span>
+        </div>
+        <div class="section-tools">
+          <span class="mono-label" id="jobs-count">0 DOCUMENTOS</span>
+          <button class="btn-text" type="button" id="btn-refresh">Actualizar ↻</button>
+        </div>
+      </div>
+
+      <div class="table" role="table" aria-label="Documentos">
+        <div class="table-head" role="row">
+          <span role="columnheader">Documento</span>
+          <span role="columnheader">Págs.</span>
+          <span role="columnheader">Estado</span>
+          <span role="columnheader">Avance</span>
+          <span role="columnheader">ETA</span>
+          <span role="columnheader">Acciones</span>
+        </div>
+        <div id="jobs" class="jobs-list" role="rowgroup"></div>
+      </div>
+
+      <div id="empty-state" class="empty-state" hidden>
+        <span class="empty-index" aria-hidden="true">00</span>
+        <div>
+          <h3>Sin documentos en esta sesión.</h3>
+          <p>Sube un PDF para abrir el primer expediente.</p>
+        </div>
+      </div>
+
+      <p class="results-note">
+        Los resultados se descargan en un ZIP por documento. Solo tú puedes
+        verlos y se eliminan al cumplir la retención.
+      </p>
+    </section>
+
+    <footer class="workspace-foot">
+      <span>MAINBIT · SEPARADOR DE PDFS</span>
+      <span>MICROSOFT ENTRA ID / SSO</span>
+      <span>2026</span>
+    </footer>
   </main>
 
-  <footer class="page-footer">
-    <span>Tus archivos se borran automáticamente según la política de retención.</span>
-    <span class="dot" aria-hidden="true">·</span>
-    <span>Uso interno</span>
-  </footer>
-
   <template id="job-template">
-    <article class="job">
-      <div class="job-top">
-        <div class="job-file">
-          <span class="file-badge" aria-hidden="true">PDF</span>
-          <div class="job-titles">
-            <h3 class="job-name"></h3>
-            <p class="job-meta"></p>
-          </div>
+    <article class="job-row" role="row">
+      <div class="cell cell-doc" role="cell">
+        <span class="file-mark" aria-hidden="true">PDF</span>
+        <div class="doc-titles">
+          <h3 class="job-name"></h3>
+          <p class="job-meta"></p>
         </div>
+      </div>
+      <div class="cell cell-pages" role="cell">
+        <span class="job-pages"></span>
+      </div>
+      <div class="cell cell-status" role="cell">
         <span class="status-badge"></span>
+        <span class="job-status"></span>
       </div>
-
-      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-        <div class="progress-bar"></div>
+      <div class="cell cell-progress" role="cell">
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar"></div>
+        </div>
+        <span class="job-progress"></span>
       </div>
-
-      <div class="job-bottom">
-        <div class="job-detail">
-          <span class="job-status"></span>
-          <span class="job-eta"></span>
-        </div>
-        <div class="job-actions">
-          <a class="btn small primary download" download>Descargar ZIP</a>
-          <button class="btn small ghost delete" type="button">Borrar</button>
-        </div>
+      <div class="cell cell-eta" role="cell">
+        <span class="job-eta"></span>
+      </div>
+      <div class="cell cell-actions" role="cell">
+        <a class="action action-download download" download>ZIP ↓</a>
+        <button class="action action-delete delete" type="button">Borrar</button>
       </div>
     </article>
   </template>
