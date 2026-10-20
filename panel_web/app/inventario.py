@@ -103,10 +103,10 @@ def importar_xlsx(con: sqlite3.Connection, ruta: Path) -> dict[str, int]:
                     if idx is None or idx >= len(fila):
                         return ""
                     return _texto(fila[idx])
-                sede = valor("sede") or valor("localidad")
+                # Misma regla que separador_auto.construir_indice:
+                # SEDE si existe; si no, Domicilio. LOCALIDAD no es sede.
                 domicilio = valor("domicilio")
-                if not sede and domicilio:
-                    sede = domicilio
+                sede = valor("sede") or domicilio
                 datos = {
                     "marca": valor("marca"), "modelo": valor("modelo"),
                     "sede": sede, "zona": valor("zona"), "domicilio": domicilio,
@@ -138,7 +138,10 @@ def exportar_xlsx(con: sqlite3.Connection, destino: Path) -> int:
     ws.title = "Inventario (panel)"
     ws.append(COLUMNAS_EXCEL)
     for f in filas:
-        ws.append([f["sn"], f["marca"] or "", f["modelo"] or "", f["sede"] or "",
+        # El pipeline usa SEDE y, si viene vacía, Domicilio. Mantenemos la
+        # misma semántica en el Excel exportado.
+        sede_salida = f["sede"] or f["domicilio"] or ""
+        ws.append([f["sn"], f["marca"] or "", f["modelo"] or "", sede_salida,
                    f["zona"] or "", f["domicilio"] or "", f["ubicacion"] or "",
                    f["piso"] or "", f["estatus"] or "",
                    f["contador_inicial"] or ""])

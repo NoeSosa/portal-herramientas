@@ -42,7 +42,7 @@ class InventarioExcelTest(unittest.TestCase):
                 self.assertEqual(resultado["insertados"], 1)
                 fila = db.listar_equipos(con)[0]
                 self.assertEqual(fila["sn"], "3356P351626")
-                self.assertEqual(fila["sede"], "Reynosa")
+                self.assertEqual(fila["sede"], "Avenida de los Encinos 800")
                 self.assertEqual(fila["domicilio"], "Avenida de los Encinos 800")
                 self.assertEqual(fila["ubicacion"], "Centro de Justicia")
                 self.assertEqual(fila["estatus"], "En Operación")
@@ -54,7 +54,7 @@ class InventarioExcelTest(unittest.TestCase):
                 headers = [c.value for c in ws2[1]]
                 self.assertIn("Ubicación", headers)
                 self.assertIn("Piso", headers)
-                self.assertEqual(ws2.cell(2, headers.index("SEDE") + 1).value, "Reynosa")
+                self.assertEqual(ws2.cell(2, headers.index("SEDE") + 1).value, "Avenida de los Encinos 800")
                 self.assertEqual(ws2.cell(2, headers.index("Ubicación") + 1).value, "Centro de Justicia")
             finally:
                 con.close()

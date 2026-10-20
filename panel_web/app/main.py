@@ -730,6 +730,9 @@ async def admin_guardar_equipo(
     con = _conexion()
     try:
         permitidos = {c: datos.get(c, "") for c in db.CAMPOS_EQUIPO if c in datos}
+        # SEDE vacía se deriva del domicilio, igual que el pipeline local.
+        if not (permitidos.get("sede") or "").strip() and permitidos.get("domicilio"):
+            permitidos["sede"] = permitidos["domicilio"]
         creado, sn = db.upsert_equipo(con, sn, **permitidos)
         ok, detalle, _ = _exportar_inventario(con)
         db.auditar(

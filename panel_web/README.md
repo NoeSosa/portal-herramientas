@@ -171,7 +171,7 @@ Para cargarlo:
 1. Entra a **Administración → Inventario**.
 2. **Importar Excel** con el inventario de seriales (el mismo que usa el panel
    local). Columnas reconocidas: `Serie`/`SN`, `Marca`, `Modelo`, `SEDE`
-   (o `LOCALIDAD`), `ZONA`, `Domicilio`, `Ubicación de Equipo`, `Piso`,
+   (o `Domicilio`), `ZONA`, `Domicilio`, `Ubicación de Equipo`, `Piso`,
    `Estatus`.
 3. El panel lo guarda en la tabla `equipos` y regenera el Excel del pipeline
    automáticamente.
