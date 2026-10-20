@@ -139,7 +139,11 @@ async def robots():
 
 @app.get("/auth/login", include_in_schema=False)
 async def auth_login(request: Request):
-    return await oauth.microsoft.authorize_redirect(request, settings.redirect_uri)
+    # Forzar selección de cuenta evita que el navegador reutilice una cuenta
+    # personal cuando la app es single-tenant (causa típica de AADSTS500208).
+    return await oauth.microsoft.authorize_redirect(
+        request, settings.redirect_uri, prompt="select_account"
+    )
 
 
 @app.get("/auth/callback", include_in_schema=False)
