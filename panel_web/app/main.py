@@ -139,10 +139,14 @@ async def robots():
 
 @app.get("/auth/login", include_in_schema=False)
 async def auth_login(request: Request):
-    # Forzar selección de cuenta evita que el navegador reutilice una cuenta
-    # personal cuando la app es single-tenant (causa típica de AADSTS500208).
+    # En Workforce forzamos selección de cuenta para no reutilizar una personal.
+    # En CIAM (MS_AUTHORITY definido) no imponemos prompt: su flujo de usuario
+    # puede no soportar `select_account`.
+    kwargs: dict[str, str] = {}
+    if not settings.authority_override:
+        kwargs["prompt"] = "select_account"
     return await oauth.microsoft.authorize_redirect(
-        request, settings.redirect_uri, prompt="select_account"
+        request, settings.redirect_uri, **kwargs
     )
 
 
