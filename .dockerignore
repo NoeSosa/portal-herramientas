@@ -1,0 +1,34 @@
+# Contexto de build del panel público (panel_web/Dockerfile).
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# No se copian al panel público.
+backend
+frontend
+docs
+scripts
+separador
+README.md
+.env.example
+*.png
+
+# Datos y artefactos del taller.
+separador_pdfs/entrada_local
+separador_pdfs/inventarios_local
+separador_pdfs/auto
+separador_pdfs/panel/panel.db
+separador_pdfs/panel/panel.db-*
+separador_pdfs/panel/logs
+separador_pdfs/panel/tmp
+separador_pdfs/panel/tests
+separador_pdfs/tests
+**/__pycache__
+**/*.pyc
+
+# Configuración local del panel.
+panel_web/.env
+panel_web/inventarios
+panel_web/tests

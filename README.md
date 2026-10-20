@@ -13,6 +13,7 @@ el pipeline de OCR y el panel que el portal publica en `/panel/`.
 | `backend/` | API en FastAPI: finanzas, visión, transcripción, texto a voz, separador, canción. |
 | `separador/` | Copia del motor del separador que se hornea en la imagen OCR. Si cambias el motor en `separador_pdfs/`, replica el cambio aquí antes de desplegar. |
 | `separador_pdfs/` | Taller del separador: pipeline de OCR, panel completo y sus pruebas. |
+| `panel_web/` | Edición pública multi-usuario con Microsoft Entra ID. Servicio separado; ver `panel_web/README.md`. |
 | `docker-compose.yml` | Servicios: frontend, backend, worker, worker OCR, redis y panel. |
 | `scripts/desplegar.sh` | Reconstruye imágenes y recrea contenedores sin `docker compose`. |
 | `scripts/preparar_separador.sh` | Copia `separador/` a `backend/separador/` antes de construir la imagen OCR. |
@@ -50,6 +51,11 @@ como scripts de línea de comandos en el workspace de OpenClaw.
 - **No reinventar lo que ya existe.** Para operaciones genéricas de PDF
   (unir, dividir, comprimir, firmar) usamos Stirling-PDF, que ya está
   desplegado. Este portal aporta la lógica propia.
+
+> **Excepción deliberada:** `panel_web/` es una edición pública separada del
+> separador, con Microsoft Entra ID y aislamiento por usuario. No forma parte
+> del portal que va por túnel SSH ni monta el workspace de OpenClaw. Su modelo
+> de seguridad está en `panel_web/README.md`.
 
 ## Arquitectura
 

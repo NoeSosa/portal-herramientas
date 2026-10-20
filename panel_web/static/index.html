@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Separador de PDFs</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Inicio">
+        <span class="brand-mark" aria-hidden="true">PDF</span>
+        <span class="brand-name">Separador de PDFs</span>
+      </a>
+
+      <div class="user-menu">
+        <span class="user-email" id="user-email">—</span>
+        <a class="btn ghost small" href="/auth/logout">Salir</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="intro">
+      <p class="eyebrow">Panel personal</p>
+      <h1>Tus documentos, separados por sede</h1>
+      <p class="lead">
+        Sube tus PDFs y el panel los procesa en orden. Puedes cerrar la pestaña:
+        el trabajo sigue en el servidor y aquí verás cuánto falta.
+      </p>
+    </section>
+
+    <section class="grid-top">
+      <div class="card upload-card">
+        <div class="card-head">
+          <h2>Subir documentos</h2>
+          <span class="hint" id="upload-hint">PDF · máx. 50 MB</span>
+        </div>
+
+        <div class="dropzone" id="dropzone" tabindex="0" role="button"
+             aria-label="Arrastra tus PDFs o elige archivos">
+          <div class="dropzone-icon" aria-hidden="true">↑</div>
+          <p class="dropzone-title">Arrastra tus PDFs aquí</p>
+          <p class="dropzone-sub">o elige los archivos desde tu equipo</p>
+          <button class="btn primary" type="button" id="btn-elegir">Elegir archivos</button>
+          <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
+        </div>
+
+        <p class="form-status" id="upload-status" role="status" aria-live="polite"></p>
+      </div>
+
+      <aside class="card queue-card" aria-labelledby="queue-title">
+        <div class="card-head">
+          <h2 id="queue-title">Tu cola</h2>
+          <span class="pill" id="queue-count">0</span>
+        </div>
+        <div class="queue-metrics">
+          <div>
+            <span class="metric-label">Documentos activos</span>
+            <strong id="queue-docs">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Páginas en tu cola</span>
+            <strong id="queue-pages">0</strong>
+          </div>
+          <div>
+            <span class="metric-label">Tiempo estimado</span>
+            <strong id="queue-eta">—</strong>
+          </div>
+        </div>
+        <p class="queue-note" id="queue-note">Sin trabajos en cola.</p>
+      </aside>
+    </section>
+
+    <section class="jobs-section" aria-labelledby="jobs-title">
+      <div class="section-head">
+        <div>
+          <h2 id="jobs-title">Mis documentos</h2>
+          <p class="section-sub">Solo tú puedes ver y descargar estos archivos.</p>
+        </div>
+        <button class="btn ghost small" type="button" id="btn-refresh">Actualizar</button>
+      </div>
+
+      <div id="jobs" class="jobs-list"></div>
+
+      <div class="empty-state" id="empty-state" hidden>
+        <div class="empty-icon" aria-hidden="true">PDF</div>
+        <h3>Aún no has subido documentos</h3>
+        <p>Arrastra un PDF arriba o elige un archivo para empezar.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <span>Tus archivos se borran automáticamente según la política de retención.</span>
+    <span class="dot" aria-hidden="true">·</span>
+    <span>Uso interno</span>
+  </footer>
+
+  <template id="job-template">
+    <article class="job">
+      <div class="job-top">
+        <div class="job-file">
+          <span class="file-badge" aria-hidden="true">PDF</span>
+          <div class="job-titles">
+            <h3 class="job-name"></h3>
+            <p class="job-meta"></p>
+          </div>
+        </div>
+        <span class="status-badge"></span>
+      </div>
+
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar"></div>
+      </div>
+
+      <div class="job-bottom">
+        <div class="job-detail">
+          <span class="job-status"></span>
+          <span class="job-eta"></span>
+        </div>
+        <div class="job-actions">
+          <a class="btn small primary download" download>Descargar ZIP</a>
+          <button class="btn small ghost delete" type="button">Borrar</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

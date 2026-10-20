@@ -54,7 +54,9 @@ SEPARADOR = os.path.join(SEP_DIR, "separador_pdf.py")
 ENV_FILE = os.path.join(WS, "..", ".env")
 RCLONE = os.environ.get("RCLONE_BIN") or "/home/node/.local/bin/rclone"
 
-LOCAL = os.path.join(SEP_DIR, "auto")
+# El panel web público usa una carpeta de trabajo POR JOB (input/output/lock
+# aislados). El panel clásico no define la variable y conserva `auto/`.
+LOCAL = os.environ.get("SEPARADOR_LOCAL") or os.path.join(SEP_DIR, "auto")
 LOCAL_ENTRADA = os.path.join(LOCAL, "entrada")
 LOCAL_INV = os.path.join(LOCAL, "inventarios")
 LOCAL_SALIDA = os.path.join(LOCAL, "salida")

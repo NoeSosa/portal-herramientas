@@ -1,0 +1,23 @@
+{
+	email {$ACME_EMAIL:admin@pdf-separator.duckdns.org}
+}
+
+{$DOMAIN:pdf-separator.duckdns.org} {
+	encode zstd gzip
+
+	# El backend también valida el tamaño, pero cortamos antes en el proxy.
+	request_body {
+		max_size 55MB
+	}
+
+	reverse_proxy panel-web:8000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		-Server
+	}
+}
