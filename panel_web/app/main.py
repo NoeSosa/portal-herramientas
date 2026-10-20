@@ -144,6 +144,18 @@ async def auth_login(request: Request):
 
 @app.get("/auth/callback", include_in_schema=False)
 async def auth_callback(request: Request):
+    # Entra puede volver con error=... antes de entregar el código. Mostramos
+    # el motivo (escapado) en vez de un 500 opaco.
+    if request.query_params.get("error"):
+        detalle = (
+            request.query_params.get("error_description")
+            or request.query_params.get("error")
+            or "Error de autenticación."
+        )[:300]
+        return _error_login(
+            "Microsoft rechazó el inicio de sesión: " + html.escape(detalle),
+            400,
+        )
     try:
         await autenticar_callback(request)
     except HTTPException as exc:

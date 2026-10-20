@@ -118,7 +118,13 @@ async def autenticar_callback(request: Request) -> tuple[sqlite3.Row, dict]:
         raise HTTPException(status_code=401, detail="Microsoft no devolvió identidad.")
 
     tid = _campo(userinfo, "tid")
-    if not tid or tid.lower() != settings.tenant_id.lower():
+    issuer = _campo(userinfo, "iss")
+    tenant_ok = bool(tid and tid.lower() == settings.tenant_id.lower())
+    # En algunos flujos de External ID/CIAM el claim `tid` no llega en
+    # userinfo; el issuer sí contiene el tenant y sirve como validación.
+    if not tenant_ok and not tid and issuer:
+        tenant_ok = settings.tenant_id.lower() in issuer.lower()
+    if not tenant_ok:
         raise HTTPException(status_code=403, detail="Tenant de Microsoft no permitido.")
 
     email = _campo(userinfo, "email", "preferred_username", "upn").lower()

@@ -68,6 +68,29 @@ En el `.env` del servidor, nunca en el chat:
 El flujo es **authorization code + OIDC**. La app valida el `tid` contra
 `MS_TENANT_ID` y el correo contra la lista/dominio. No se guardan contraseñas.
 
+### Si el tenant es External ID (CIAM)
+
+`AADSTS500208` (“The domain is not a valid login domain for the account type”)
+significa que el tipo de cuenta no coincide con el tenant/app. Si tu tenant es
+**External ID for Customers (CIAM)**, la autoridad no es
+`login.microsoftonline.com`, sino `ciamlogin.com`:
+
+```dotenv
+MS_AUTHORITY=https://<subdominio>.ciamlogin.com/<tenant-id>/v2.0
+```
+
+El resto de la configuración (client ID, secreto, redirect URI y tenant ID)
+sigue igual. Si tu tenant es **Workforce** normal, deja `MS_AUTHORITY` vacío.
+
+Antes de cambiar código, confirma en Entra:
+
+- El dominio del correo está en **Configuración → Dominios** y está **verificado**.
+- El usuario es **Member** del mismo tenant, no una cuenta personal ni un invitado
+  de otro tenant.
+- La app es **single-tenant** solo si los 5 usuarios pertenecen a ese tenant.
+- En **Monitoring & health → Sign-in logs**, el fallo 500208 muestra el usuario,
+  la app y el motivo exacto.
+
 ## SSL y DNS
 
 1. En DuckDNS, el dominio `pdf-separator.duckdns.org` debe apuntar a la IP

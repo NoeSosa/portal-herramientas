@@ -51,6 +51,7 @@ class Settings:
     static_dir: Path
 
     tenant_id: str
+    authority_override: str
     client_id: str
     client_secret: str
     redirect_uri: str
@@ -78,7 +79,11 @@ class Settings:
 
     @property
     def authority(self) -> str:
-        return f"https://login.microsoftonline.com/{self.tenant_id}/v2.0"
+        # Por defecto, nube pública de Microsoft Entra (workforce).
+        # Para External ID (CIAM), nubes soberanas o B2C se define MS_AUTHORITY.
+        return self.authority_override or (
+            f"https://login.microsoftonline.com/{self.tenant_id}/v2.0"
+        )
 
     @property
     def metadata_url(self) -> str:
@@ -107,6 +112,7 @@ class Settings:
         data_dir = Path(_texto("DATA_DIR", "/data")).resolve()
 
         tenant_id = _texto("MS_TENANT_ID")
+        authority_override = _texto("MS_AUTHORITY").rstrip("/")
         client_id = _texto("MS_CLIENT_ID")
         client_secret = _texto("MS_CLIENT_SECRET")
         session_secret = _texto("SESSION_SECRET")
@@ -130,6 +136,8 @@ class Settings:
             )
         if len(session_secret) < 32:
             raise ValueError("SESSION_SECRET debe tener al menos 32 caracteres.")
+        if authority_override and not authority_override.startswith("https://"):
+            raise ValueError("MS_AUTHORITY debe ser una URL https:// válida.")
         if not allowed_domain and not allowed_emails:
             raise ValueError(
                 "Define ALLOWED_DOMAIN o ALLOWED_EMAILS: el panel no puede quedar abierto."
@@ -154,6 +162,7 @@ class Settings:
             ),
             static_dir=Path(__file__).resolve().parent.parent / "static",
             tenant_id=tenant_id,
+            authority_override=authority_override,
             client_id=client_id,
             client_secret=client_secret,
             redirect_uri=_texto(
