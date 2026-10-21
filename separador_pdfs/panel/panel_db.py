@@ -348,7 +348,7 @@ def ingerir_progreso(con, progress_dir, job_id, cola_id, offset=0):
         campos = {c: ev.get(c) for c in _CAMPOS_EVENTO}
         if ev.get("estado") in ("OK",) or tipo in ("doc_fin", "job_fin"):
             nivel = "ok"
-        elif ev.get("estado") in ("A_REVISAR", "DESCARTADA"):
+        elif ev.get("estado") in ("POR_VERIFICAR", "A_REVISAR", "DESCARTADA"):
             nivel = "aviso"
         elif tipo == "error":
             nivel = "error"

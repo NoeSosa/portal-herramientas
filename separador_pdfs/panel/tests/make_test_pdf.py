@@ -4,19 +4,19 @@ make_test_pdf.py — Genera un PDF de prueba (4 páginas) para el panel.
 
 Se usa SOLO en pruebas: crea hojas sintéticas tipo "contador" con seriales
 REALES del inventario para poder probar el flujo completo (OCR → clasificación →
-sede → A_REVISAR/OK) sin necesidad de escanear nada.
+sede → POR_VERIFICAR/OK) sin necesidad de escanear nada.
 
 Seriales usados (tomados de Inventarios_Separador/inventario.xlsx, hoja "Agosto 2026"):
-  · 3356P351757  → Ricoh (2 páginas en el PDF = conteo válido)  → EQUIPOS_OK
-  · CNB1NDR0XQ   → HP MFP 432 (1 página)                        → EQUIPOS_OK
-  · (página 4 sin serial legible)                               → A_REVISAR
+  · 3356P351757  → Ricoh (2 páginas en el PDF = conteo válido)  → VERIFICADOS
+  · CNB1NDR0XQ   → HP MFP 432 (1 página)                        → VERIFICADOS
+  · (página 4 sin serial legible)                               → POR_VERIFICAR
 
 Uso:
   LD_LIBRARY_PATH="$HOME/.local/lib:$LD_LIBRARY_PATH" \
     venv-pdfseparador/bin/python separador_pdfs/panel/tests/make_test_pdf.py <salida.pdf>
 
 ✅ VALIDADO: 16/oct/2026 (Ches) — genera un PDF que el pipeline clasifica como
-   2 grupos OK + 1 página A_REVISAR (verificado con --dry end-to-end).
+   2 grupos OK + 1 página POR_VERIFICAR (verificado con --dry end-to-end).
 """
 import os
 import sys

@@ -59,6 +59,21 @@ class InventarioExcelTest(unittest.TestCase):
             finally:
                 con.close()
 
+    def test_formula_no_se_exporta_como_formula(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            con = db.conectar(tmp / "panel.db")
+            try:
+                db.inicializar(tmp / "panel.db")
+                db.upsert_equipo(con, "ABC1", sede='=HYPERLINK("http://x")')
+                destino = tmp / "inventario_panel.xlsx"
+                inventario.exportar_xlsx(con, destino)
+                ws = load_workbook(destino).active
+                valor = ws.cell(2, 4).value
+                self.assertTrue(str(valor).startswith("'="), valor)
+            finally:
+                con.close()
+
 
 if __name__ == "__main__":
     unittest.main()

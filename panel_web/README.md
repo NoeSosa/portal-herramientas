@@ -8,7 +8,8 @@ Es un servicio **separado** del panel clásico. El panel clásico sigue siendo l
 consola de administración por túnel SSH.
 
 La dirección visual (azul marino, papel cálido, IBM Plex y tabla editorial) está
-documentada en [`DESIGN.md`](DESIGN.md).
+documentada en [`DESIGN.md`](DESIGN.md). La auditoría de seguridad y sus
+pendientes están en [`SECURITY.md`](SECURITY.md).
 
 ## Arquitectura
 

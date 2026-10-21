@@ -69,6 +69,13 @@ def _texto(valor: Any) -> str:
     return "" if texto.lower() in {"nan", "none"} else texto
 
 
+def _celda_segura(valor: Any) -> Any:
+    """Evita inyección de fórmulas al abrir el Excel exportado."""
+    if isinstance(valor, str) and valor[:1] in ("=", "+", "-", "@"):
+        return "'" + valor
+    return valor
+
+
 def importar_xlsx(con: sqlite3.Connection, ruta: Path) -> dict[str, int]:
     """Importa todas las hojas con cabecera de Serie/SN. No borra lo existente."""
     wb = load_workbook(ruta, read_only=True, data_only=True)
@@ -141,10 +148,11 @@ def exportar_xlsx(con: sqlite3.Connection, destino: Path) -> int:
         # El pipeline usa SEDE y, si viene vacía, Domicilio. Mantenemos la
         # misma semántica en el Excel exportado.
         sede_salida = f["sede"] or f["domicilio"] or ""
-        ws.append([f["sn"], f["marca"] or "", f["modelo"] or "", sede_salida,
-                   f["zona"] or "", f["domicilio"] or "", f["ubicacion"] or "",
-                   f["piso"] or "", f["estatus"] or "",
-                   f["contador_inicial"] or ""])
+        ws.append([_celda_segura(v) for v in (
+            f["sn"], f["marca"] or "", f["modelo"] or "", sede_salida,
+            f["zona"] or "", f["domicilio"] or "", f["ubicacion"] or "",
+            f["piso"] or "", f["estatus"] or "", f["contador_inicial"] or "",
+        )])
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     tmp = destino.with_suffix(".xlsx.tmp")

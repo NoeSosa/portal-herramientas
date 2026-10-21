@@ -12,7 +12,7 @@ Todo corre en local. No requiere servicios en la nube ni credenciales de tercero
 2. **Proceso.** El OCR lee cada hoja, identifica el numero de serie, la sede y la
    marca, y separa el documento en un PDF por equipo.
 3. **Resultados.** Los archivos quedan organizados por corrida y por sede, en dos
-   carpetas: `EQUIPOS_OK` y `A_REVISAR`. Se descargan desde el panel.
+   carpetas: `VERIFICADOS` y `POR_VERIFICAR`. Se descargan desde el panel.
 
 ## Vistas
 

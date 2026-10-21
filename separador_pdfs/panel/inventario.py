@@ -58,6 +58,13 @@ def _texto(v):
     return str(v).strip()
 
 
+def _celda_segura(v):
+    """Evita que un serial o sede se convierta en fórmula al abrir el Excel."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@"):
+        return "'" + v
+    return v
+
+
 def importar(db, xlsx_rutas):
     """Lee los Excel y hace upsert en `equipos`. Devuelve (leidos, insertados,
     actualizados, archivos)."""
@@ -144,8 +151,10 @@ def exportar(db, destino):
     ws.title = "Inventario (panel)"
     ws.append(COLUMNAS_EXCEL)
     for f in filas:
-        ws.append([f["sn"], f["marca"], f["modelo"], f["sede"], f["zona"],
-                   f["domicilio"], f["estatus"], f["contador_inicial"]])
+        ws.append([_celda_segura(v) for v in (
+            f["sn"], f["marca"], f["modelo"], f["sede"], f["zona"],
+            f["domicilio"], f["estatus"], f["contador_inicial"],
+        )])
     os.makedirs(os.path.dirname(os.path.abspath(destino)), exist_ok=True)
     wb.save(destino)
     return len(filas)

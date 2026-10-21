@@ -20,7 +20,7 @@ Endpoints:
   POST /api/borrar           {"nombre": "x.pdf", "que": "entrada|procesados"}
   POST /api/encolar          {"nombres":[…],"iniciar":true,"dry":true,…} → filas en `cola`
   POST /api/disparar         arranca el worker YA (reemplaza al vigilante de 7 min)
-  GET  /api/resultados       árbol de resultados (corrida → sede → EQUIPOS_OK/A_REVISAR)
+  GET  /api/resultados       árbol de resultados (corrida → sede → VERIFICADOS/POR_VERIFICAR)
   GET  /api/descargar        ?corrida=&sede=&carpeta=&archivo= → archivo individual
   GET  /api/zip              ?corrida=&sede= → ZIP de la sede (o de la corrida)
   GET  /api/espacio          uso de disco del separador + libre del disco
@@ -466,7 +466,7 @@ async def api_descargar(corrida: str, sede: str = "", carpeta: str = "", archivo
 
 @app.get("/api/zip")
 async def api_zip(corrida: str, sede: str = ""):
-    """ZIP de una sede (EQUIPOS_OK + A_REVISAR + registro) o de la corrida completa.
+    """ZIP de una sede (VERIFICADOS + POR_VERIFICAR + registro) o de la corrida completa.
     Sustituye al link de Drive: sin Drive, así se sacan los archivos del panel."""
     cfg = _cfg()
     os.makedirs(pc.TMP_DIR, exist_ok=True)

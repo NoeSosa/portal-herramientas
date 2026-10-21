@@ -1350,10 +1350,10 @@ function pintarResultados(){
         <a class="mini" href="${API}/zip?${q({corrida:c.corrida, sede:s.sede})}"
            onclick="event.stopPropagation()">↓ ZIP sede</a>
         </summary><div class="sede-cuerpo">`;
-      for (const carpeta of ["EQUIPOS_OK","A_REVISAR"]){
+      for (const carpeta of ["VERIFICADOS","POR_VERIFICAR"]){
         const archs = (s.carpetas || {})[carpeta] || [];
         if (!archs.length) continue;
-        const etiqueta = carpeta === "EQUIPOS_OK" ? "Equipos listos" : "Por revisar";
+        const etiqueta = carpeta === "VERIFICADOS" ? "Verificados" : "Por verificar";
         inner += `<div class="grupo">${etiqueta} (${archs.length})</div>`;
         for (const a of archs){
           const url = API + "/descargar?" + q({corrida:c.corrida, sede:s.sede, carpeta, archivo:a.Name});
@@ -2001,13 +2001,13 @@ function pintarFin(){
     (term ? term.toLocaleTimeString() : "") + (dur ? ` · duró ${mmss(dur)}` : "");
   const r = S.resumen || {};
   const pe = r.por_estado || {};
-  const ok = pe.OK || 0, rev = pe.A_REVISAR || 0;
+  const ok = pe.OK || 0, rev = (pe.POR_VERIFICAR || 0) + (pe.A_REVISAR || 0);
   const datos = [
     ...(simple ? [] : [["job", `#${j.id}`]]),
     ["archivo", j.nombre],
     ["páginas", `${j.pag_hechas}/${j.pag_total || "?"}`],
-    [simple ? "equipos listos" : "equipos OK", ok],
-    ["a revisar", rev],
+    [simple ? "equipos verificados" : "equipos OK", ok],
+    ["por verificar", rev],
     ["sedes", Object.keys(r.por_sede || {}).length || "—"],
   ];
   if (j.estado === "error" && (j.error || j.mensaje))

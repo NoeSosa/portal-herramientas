@@ -370,6 +370,15 @@ function pintarWorkers(workers) {
   }
 }
 
+function etiquetaPagina(estado, ocr) {
+  const e = (estado || "").toUpperCase();
+  if (e === "OK") return "VERIFICADO";
+  if (e === "A_REVISAR" || e === "POR_VERIFICAR") return "POR VERIFICAR";
+  if (e === "DESCARTADA") return "DESCARTADA";
+  if (ocr) return "LEÍDA";
+  return "—";
+}
+
 function pintarPaginas(pages, total, actual) {
   const cont = $("admin-pages");
   cont.textContent = "";
@@ -380,7 +389,7 @@ function pintarPaginas(pages, total, actual) {
     if (p) {
       const estado = (p.estado || "").toUpperCase();
       if (estado === "OK") celda.classList.add("ok");
-      else if (estado === "A_REVISAR") celda.classList.add("aviso");
+      else if (estado === "A_REVISAR" || estado === "POR_VERIFICAR") celda.classList.add("aviso");
       else if (estado === "DESCARTADA") celda.classList.add("descartada");
       else if (p.ocr) celda.classList.add("ocr");
     } else {
@@ -388,7 +397,7 @@ function pintarPaginas(pages, total, actual) {
     }
     if (i === actual) celda.classList.add("active");
     if (p) {
-      celda.title = `Hoja ${i} · ${p.estado || (p.ocr ? "leída" : "pendiente")}` +
+      celda.title = `Hoja ${i} · ${etiquetaPagina(p.estado, p.ocr).toLowerCase()}` +
         ` · ${p.sn || "sin serial"} · ${p.sede || "sin sede"}`;
     } else {
       celda.title = `Hoja ${i} · pendiente`;
@@ -418,7 +427,7 @@ function pintarRecientes(pages) {
       el("td", "num", p.pag),
       el("td", "", p.sn || "—"),
       el("td", "", p.sede || "—"),
-      el("td", "", p.estado || (p.ocr ? "LEÍDA" : "—")),
+      el("td", "", etiquetaPagina(p.estado, p.ocr)),
       el("td", "", p.worker || (Number.isInteger(p.slot) && p.slot >= 0 ? `slot ${p.slot + 1}` : "—")),
     );
     body.appendChild(tr);

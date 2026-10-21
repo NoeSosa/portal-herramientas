@@ -778,7 +778,7 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
                 if p["info"] and p["info"]["sn"] == cl and es_cfg:
                     quitar_nums.add(p["num"])
     # FIX 2026-09-18: registrar las hojas descartadas para que la cuenta cuadre
-    # (hojas origen = OK + A_REVISAR + DESCARTADAS). Antes desaparecían sin rastro.
+    # (hojas origen = OK + POR_VERIFICAR + DESCARTADAS). Antes desaparecían sin rastro.
     descartadas = []
     for p, _es_cfg in paginas_filtradas:
         if p["num"] in quitar_nums:
@@ -1033,10 +1033,6 @@ def _ejecutar(args):
         carpeta_local = os.path.join(LOCAL_SALIDA, f"Separador_{stamp}")
         os.makedirs(carpeta_local, exist_ok=True)
 
-        # Directorio de correos por sede (se crea en Drive al subir).
-        correos_local = os.path.join(carpeta_local, "Correos_Sede")
-        os.makedirs(correos_local, exist_ok=True)
-
         resumen = []          # lista global para el reporte resumido por archivo
         descartadas_doc = []  # FIX 2026-09-18: hojas omitidas a propósito (para trazabilidad)
         trazabilidad = []     # 1 fila POR ARCHIVO generado (no por hoja):
@@ -1055,9 +1051,9 @@ def _ejecutar(args):
             for eq in res["ok"]:
                 zona_dir = sanitizar_nombre(eq.get("zona_dir") or eq["sede"][:40] or "SIN_ZONA")
                 sede_dir = sanitizar_nombre(eq["sede"]) if eq["sede"] else "SIN_SEDE"
-                # ruta: <corrida>/<SEDE>/EQUIPOS_OK/<serial>.pdf  (la zona va en el txt/reporte)
+                # ruta: <corrida>/<SEDE>/VERIFICADOS/<serial>.pdf  (la zona va en el txt/reporte)
                 carpeta_sede = os.path.join(carpeta_local, sede_dir)
-                ok_dir = os.path.join(carpeta_sede, "EQUIPOS_OK")
+                ok_dir = os.path.join(carpeta_sede, "VERIFICADOS")
                 os.makedirs(ok_dir, exist_ok=True)
                 sn = eq['sn']
                 sal = os.path.join(ok_dir, f"{sn}.pdf")
@@ -1070,16 +1066,16 @@ def _ejecutar(args):
                 merge_paginas(pdf, eq["paginas"], sal)
                 resumen.append(f"OK|{sn}|{sede_dir}|{len(eq['paginas'])}pág")
                 trazabilidad.append(
-                    f"{sede_dir}|{sn}|{eq['modelo']}|{len(eq['paginas'])}|{os.path.basename(pdf)}|OK|{sede_dir}/EQUIPOS_OK/{os.path.basename(sal)}")
+                    f"{sede_dir}|{sn}|{eq['modelo']}|{len(eq['paginas'])}|{os.path.basename(pdf)}|OK|{sede_dir}/VERIFICADOS/{os.path.basename(sal)}")
 
             for v in res["verificar"]:
                 sede_sug = sanitizar_nombre(v["sede"]) if v["sede"] else "SIN_SEDE"
                 # si el ítem a revisar no tiene sede, cae en la sede del documento (heredada)
                 if sede_sug == "SIN_SEDE" and res.get("sede_doc"):
                     sede_sug = sanitizar_nombre(res["sede_doc"])
-                # A_REVISAR dentro de la carpeta de la sede de origen
+                # POR_VERIFICAR dentro de la carpeta de la sede de origen
                 carpeta_sede_v = os.path.join(carpeta_local, sede_sug)
-                rev_dir = os.path.join(carpeta_sede_v, "A_REVISAR")
+                rev_dir = os.path.join(carpeta_sede_v, "POR_VERIFICAR")
                 os.makedirs(rev_dir, exist_ok=True)
                 snn = (v.get("sn") or v.get("nombre") or "SINID")
                 # Marca/modelo legible (mayúscula corta) para incluir en el nombre
@@ -1096,11 +1092,11 @@ def _ejecutar(args):
                     pgs = "_".join(str(x + 1) for x in v["paginas"])
                     nombre = f"{snn}__{marca}__pag{pgs}__de_{doc_stem}.pdf"
                     sal = os.path.join(rev_dir, nombre)
-                    log(f"[aviso] nombre duplicado en A_REVISAR para {snn}; se guarda como {nombre}")
+                    log(f"[aviso] nombre duplicado en POR_VERIFICAR para {snn}; se guarda como {nombre}")
                 merge_paginas(pdf, v["paginas"], sal)
                 resumen.append(f"REVISAR|{snn}|{sede_sug}|{v.get('razon','')}")
                 trazabilidad.append(
-                    f"{sede_sug}|{snn}|{v.get('modelo','?')}|{len(v['paginas'])}|{os.path.basename(pdf)}|A_REVISAR|{sede_sug}/A_REVISAR/{nombre}")
+                    f"{sede_sug}|{snn}|{v.get('modelo','?')}|{len(v['paginas'])}|{os.path.basename(pdf)}|POR_VERIFICAR|{sede_sug}/POR_VERIFICAR/{nombre}")
 
             log(f"[3] {os.path.basename(pdf)}: {len(res['ok'])} OK, "
                 f"{len(res['verificar'])} verificar en {time.time()-t0:.0f}s")
@@ -1114,8 +1110,8 @@ def _ejecutar(args):
             f"Resumen: {n_ok} USUARIOS listos y {n_rev} a revisar.\n\n"
             f"Procesados de {len(pdfs)} PDF(s) escaneados.\n\n"
             f"CÓMO LEER ESTA CARPETA:\n"
-            f"  • EQUIPOS_OK/  → contadores correctos, ya separados por usuario.\n"
-            f"  • A_REVISAR/   → documentos con dudas (hojas sueltas, número de páginas\n"
+            f"  • VERIFICADOS/  → contadores correctos, ya separados por usuario.\n"
+            f"  • POR_VERIFICAR/   → documentos con dudas (hojas sueltas, número de páginas\n"
             f"                    inusual o serial no registrado). Revisar antes de usar.\n"
             f"  • 02_REGISTRO.txt → de qué PDF salió cada hoja (trazabilidad).\n"
             f"\nCarpeta creada automaticamente."
@@ -1134,8 +1130,8 @@ def _ejecutar(args):
         for sede, filas in sedes.items():
             filas_ok = [f for f in filas if f[5] == 'OK']
             filas_rev = [f for f in filas if f[5] != 'OK']
-            ruta_ok = os.path.join(carpeta_local, sede, "EQUIPOS_OK")
-            ruta_rev = os.path.join(carpeta_local, sede, "A_REVISAR")
+            ruta_ok = os.path.join(carpeta_local, sede, "VERIFICADOS")
+            ruta_rev = os.path.join(carpeta_local, sede, "POR_VERIFICAR")
             os.makedirs(ruta_ok, exist_ok=True)
             os.makedirs(ruta_rev, exist_ok=True)
             txt = list()
@@ -1145,7 +1141,7 @@ def _ejecutar(args):
             for f in filas:
                 # f = [sede, serial, modelo, n_pag, pdf_origen, estado, archivo]
                 txt.append(f"{f[1]}\t{f[4]}\t{f[3]}\t{f[5]}\t{os.path.basename(f[6])}")
-            # FIX 2026-09-18: hojas descartadas (para que cuadre: origen = OK + A_REVISAR + descartadas)
+            # FIX 2026-09-18: hojas descartadas (para que cuadre: origen = OK + POR_VERIFICAR + descartadas)
             desc_sede = [d for d in descartadas_doc if (d.get("sede") or sede) == sede]
             if desc_sede:
                 txt.append("")

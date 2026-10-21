@@ -89,14 +89,14 @@ class AislamientoTest(unittest.TestCase):
         db.upsert_pagina(self.con, "job-pag", 1, sn="ABC123", sede="Monterrey",
                          estado="OK", texto="serial ABC123", worker="0-1",
                          slot=0, pid=10, ms=900, ts=1.0)
-        db.upsert_pagina(self.con, "job-pag", 2, estado="A_REVISAR",
+        db.upsert_pagina(self.con, "job-pag", 2, estado="POR_VERIFICAR",
                          worker="1-2", slot=1, pid=11, ms=1100, ts=2.0)
         paginas = db.paginas_job(self.con, "job-pag")
         self.assertEqual([p["pag"] for p in paginas], [1, 2])
         self.assertEqual(paginas[0]["ocr"], 1)
         self.assertEqual(paginas[1]["ocr"], 0)
         self.assertEqual(db.resumen_paginas(self.con, "job-pag")["por_estado"],
-                         {"OK": 1, "A_REVISAR": 1})
+                         {"OK": 1, "POR_VERIFICAR": 1})
         self.assertEqual(len(db.trabajadores_job(self.con, "job-pag")), 2)
 
     def test_eta_cuenta_paginas_por_delante(self) -> None:

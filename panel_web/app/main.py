@@ -26,6 +26,7 @@ from fastapi.responses import (
     Response,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -156,7 +157,7 @@ def admin_actual(usuario=Depends(usuario_actual)):
 async def admin_pagina(request: Request):
     uid = request.session.get("uid")
     if not uid:
-        return _pagina("login.html")
+        return RedirectResponse("/login", status_code=303)
     con = db.conectar(settings.db_path)
     try:
         usuario = db.usuario_por_id(con, int(uid))
@@ -362,7 +363,8 @@ async def crear_job(
         )
 
     contenido = await archivo.read(settings.max_upload_bytes + 1)
-    paginas = _validar_pdf(contenido)
+    # PyMuPDF es CPU-bound: no bloquear el event loop con un PDF grande.
+    paginas = await run_in_threadpool(_validar_pdf, contenido)
     nombre = _nombre_seguro(archivo.filename)
 
     con = _conexion()
@@ -550,6 +552,23 @@ def _job_admin(job: Any, current_page: int = 0) -> dict[str, Any]:
     return datos
 
 
+def _render_pagina_pdf(pdf: Path, pag: int) -> bytes:
+    doc = fitz.open(pdf)
+    try:
+        page = doc.load_page(pag - 1)
+        return page.get_pixmap(dpi=110).tobytes("png")
+    finally:
+        doc.close()
+
+
+def _importar_inventario_archivo(tmp: Path) -> dict[str, int]:
+    con = db.conectar(settings.db_path)
+    try:
+        return inventario.importar_xlsx(con, tmp)
+    finally:
+        con.close()
+
+
 def _exportar_inventario(con) -> tuple[bool, str, Path]:
     destino = settings.inventory_dir / "inventario_panel.xlsx"
     try:
@@ -658,13 +677,8 @@ async def admin_job_page(
     if not pdf:
         raise HTTPException(status_code=404, detail="La hoja ya no está disponible.")
     try:
-        doc = fitz.open(pdf)
-        try:
-            page = doc.load_page(pag - 1)
-            pix = page.get_pixmap(dpi=110)
-            contenido = pix.tobytes("png")
-        finally:
-            doc.close()
+        # Renderizar en hilo aparte: un PDF grande no debe congelar la API.
+        contenido = await run_in_threadpool(_render_pagina_pdf, pdf, pag)
         thumb.parent.mkdir(parents=True, exist_ok=True)
         thumb.write_bytes(contenido)
         return Response(
@@ -818,7 +832,7 @@ async def admin_importar_inventario(
     tmp.write_bytes(contenido)
     con = _conexion()
     try:
-        resultado = inventario.importar_xlsx(con, tmp)
+        resultado = await run_in_threadpool(_importar_inventario_archivo, tmp)
         ok, detalle, _ = _exportar_inventario(con)
         db.auditar(
             con, user_id=int(admin["id"]), email=admin["email"],
@@ -866,6 +880,12 @@ async def admin_sedes(admin=Depends(admin_actual)) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 # Estáticos
 # --------------------------------------------------------------------------
+@app.get("/static/admin.html", include_in_schema=False)
+async def admin_html_no_publico():
+    # La consola solo se entrega por /admin, que valida la sesión y el rol.
+    raise HTTPException(status_code=404, detail="No encontrado.")
+
+
 app.mount(
     "/static",
     StaticFiles(directory=str(settings.static_dir)),

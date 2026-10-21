@@ -7,7 +7,7 @@ Con `modo: "local"` (por defecto) el panel no habla con Drive: todo pasa por dis
   separador_pdfs/entrada_local/            ← PDFs por procesar (subida desde la UI)
   separador_pdfs/entrada_local/procesados/ ← PDFs ya procesados (el pipeline los mueve)
   separador_pdfs/inventarios_local/*.xlsx  ← inventarios que usa el pipeline en local
-  separador_pdfs/auto/salida/Separador_<fecha>/<Sede>/{EQUIPOS_OK,A_REVISAR}/
+  separador_pdfs/auto/salida/Separador_<fecha>/<Sede>/{VERIFICADOS,POR_VERIFICAR}/
 
 Funciones: listar entrada (con nº de páginas), subir/borrar, explorador de
 resultados, ZIP por sede (sustituye al link de Drive), espacio en disco y limpieza
@@ -26,7 +26,7 @@ from datetime import datetime
 
 import panel_config as pc
 
-CARPETAS_SEDE = ("EQUIPOS_OK", "A_REVISAR")
+CARPETAS_SEDE = ("VERIFICADOS", "POR_VERIFICAR")
 # Archivos informativos de la corrida que también se pueden descargar
 ARCHIVOS_RUN = ("00_LEEME.txt", "01_RESUMEN_GENERAL.txt")
 
@@ -201,7 +201,7 @@ def inventarios(cfg):
 
 # ------------------------------------------------------------------ resultados
 def listar_resultados(cfg):
-    """Árbol de resultados: corrida → sede → {EQUIPOS_OK, A_REVISAR, otros}."""
+    """Árbol de resultados: corrida → sede → {VERIFICADOS, POR_VERIFICAR, otros}."""
     base = pc.SALIDA_LOCAL
     if not os.path.isdir(base):
         return []
@@ -237,8 +237,8 @@ def listar_resultados(cfg):
             if carpetas or extras:
                 sedes.append({"sede": sede, "carpetas": carpetas, "extras": extras,
                               "bytes": total,
-                              "n_ok": len(carpetas.get("EQUIPOS_OK", [])),
-                              "n_revisar": len(carpetas.get("A_REVISAR", []))})
+                              "n_ok": len(carpetas.get("VERIFICADOS", [])),
+                              "n_revisar": len(carpetas.get("POR_VERIFICAR", []))})
         st = os.stat(ruta_corrida)
         corridas.append({
             "corrida": nombre,
@@ -270,7 +270,7 @@ def ruta_resultado(cfg, corrida, sede, carpeta, archivo):
 
 
 def zip_resultados(cfg, corrida, sede, destino):
-    """Escribe un ZIP con la sede (EQUIPOS_OK + A_REVISAR + txt) o con la corrida
+    """Escribe un ZIP con la sede (VERIFICADOS + POR_VERIFICAR + txt) o con la corrida
     completa si `sede` es vacío. Devuelve (ok, n_archivos|error)."""
     base = _dentro(pc.SALIDA_LOCAL, _seguro(corrida))
     if not base or not os.path.isdir(base):
