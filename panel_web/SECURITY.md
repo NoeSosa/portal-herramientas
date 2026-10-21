@@ -20,20 +20,20 @@ Hallazgos relevantes:
 
 | ID | Severidad | Estado | Hallazgo |
 |---|---|---|---|
-| SEC-01 | Media | Abierto | El PDF se parsea con PyMuPDF en el panel web público; riesgo de DoS/parser exploit y falta antivirus. |
+| SEC-01 | Media | Aceptado con compensaciones | PDF parseado en el panel web; riesgo de DoS/parser exploit. Sin antivirus por decisión de riesgo. |
 | SEC-02 | Media | Corregido | Inyección de fórmulas al exportar el inventario a Excel. |
 | SEC-03 | Baja | Corregido | `/static/admin.html` era accesible sin sesión. |
 | SEC-04 | Baja | Aceptado | Logout por GET (CSRF de cierre de sesión). |
-| SEC-05 | Baja | Abierto | Sin escaneo antimalware de PDFs. |
+| SEC-05 | Baja | Aceptado | Sin escaneo antimalware; usuarios de confianza y PDFs normalizados como datos. |
 | SEC-06 | Baja | Aceptado | Rate limit de subidas en memoria; se reinicia con el proceso. |
 | SEC-07 | Baja | Aceptado | Importación de Excel solo admin; puede consumir CPU/memoria. |
 | SEC-08 | Informativa | Aceptado | CSP depende de Google Fonts para IBM Plex. |
 | SEC-09 | Informativa | Aceptado | Cookie de sesión sin prefijo `__Host-` (flags correctos). |
-| SEC-10 | Informativa | Abierto | Dependencias antiguas (PaddleOCR 2.7) y sin escaneo continuo de CVEs. |
+| SEC-10 | Informativa | Aceptado temporalmente | PaddleOCR 2.7 pendiente de actualización; OSV sin avisos al corte. |
 
 ## Hallazgos
 
-### SEC-01 — Parseo de PDF en el panel web (Media, abierto)
+### SEC-01 — Parseo de PDF en el panel web (Media, aceptado con compensaciones)
 
 `_validar_pdf()` abre el PDF con PyMuPDF en `panel-web` antes de encolarlo. Un
 PDF malformado o muy complejo puede consumir CPU/memoria o explotar un fallo del
@@ -46,12 +46,24 @@ Mitigaciones actuales:
 - Parseo movido a `run_in_threadpool` para no bloquear el event loop.
 - Worker OCR con `network_mode: none`.
 
-Recomendación:
+Decisión (2026-10-21): no se instala ClamAV en esta versión. El producto se
+sirve a un grupo de 5 personas de confianza, los archivos son escaneos y el
+worker no tiene red. Se acepta el riesgo residual del parser con estas
+compensaciones:
 
-1. Validar páginas en un proceso/contenedor aislado sin red y con timeout, o
-   aceptar el archivo y validarlo en el worker (que ya es network-none).
-2. Añadir ClamAV/antivirus o un servicio de scanning antes de procesar.
-3. Mantener PyMuPDF actualizado y ejecutar `pip-audit`/Trivy en CI.
+- Validación real de cabecera `%PDF-1.x`/`2.x`, apertura con PyMuPDF, rechazo de
+  cifrados, límite de tamaño y páginas.
+- Detección de contenido activo (`/JavaScript`, `/JS`, `/Launch`,
+  `/EmbeddedFile`, `/RichMedia`, `/OpenAction`, `/AA`, `/XFA`) y de `%%EOF`.
+  Se **registra como aviso**, no se rechaza automáticamente, para evitar falsos
+  positivos en PDFs escaneados.
+- El PDF se guarda como dato con modo `0600`; directorios `0700`; sin bit de
+  ejecución; el worker no tiene red.
+- Si aparece contenido activo o un PDF raro, se revisa manualmente.
+
+Recomendación si cambia el modelo de confianza: ClamAV en modo sombra y luego
+`enforce`, y aislamiento del parser en un proceso sin red. Mantener PyMuPDF
+actualizado y ejecutar `pip-audit`/Trivy.
 
 ### SEC-02 — Inyección de fórmulas en Excel (Media, corregido)
 
@@ -75,11 +87,13 @@ sirve por `/admin`, que valida sesión y rol. `/admin` sin sesión ahora redirig
 cierra la sesión; no expone datos. Si se quiere eliminar, convertir el enlace en
 POST con token CSRF.
 
-### SEC-05 — Sin antivirus (Baja, abierto)
+### SEC-05 — Sin antivirus (Baja, aceptado)
 
-No hay scanning de malware. Los PDFs se validan por estructura/tamaño/páginas,
-pero no por contenido malicioso. Para 5 usuarios corporativos el riesgo es
-acotado; se recomienda ClamAV o un servicio externo.
+No hay scanning de malware. Los PDFs se validan por estructura/tamaño/páginas y
+se revisan avisos de contenido activo; no se ejecuta nada del archivo. Para 5
+usuarios corporativos el riesgo es acotado y se acepta conscientemente. Se
+recomienda ClamAV solo si se abren usuarios externos, se reciben adjuntos de
+terceros o se exige por cumplimiento.
 
 ### SEC-06 — Rate limit en memoria (Baja, aceptado)
 
@@ -106,14 +120,15 @@ La cookie `pdfsep_session` tiene `HttpOnly`, `Secure`, `SameSite=Lax`, `path=/`
 y `Max-Age`. No usa prefijo `__Host-`; añadirlo es una mejora de defensa en
 profundidad, no un fallo explotable.
 
-### SEC-10 — Dependencias (Informativa, abierto)
+### SEC-10 — Dependencias (Informativa, aceptado temporalmente)
 
 Consulta OSV del 2026-10-21 para las versiones fijadas:
 
 - `fastapi 0.115.6`, `uvicorn 0.34.0`, `pymupdf 1.26.0`,
   `paddleocr 2.7.0.3`, `numpy 2.4.6`, `opencv-python-headless 5.0.0.93`,
   `pandas 3.0.5`, `openpyxl 3.1.5`: **0 avisos conocidos** en OSV al momento.
-- PaddleOCR 2.7 es una versión antigua; conviene planear actualización.
+- PaddleOCR 2.7 es una versión antigua; la actualización a 3.7.0 está
+  documentada y diferida en [`docs/OCR_3.7_PENDIENTE.md`](../docs/OCR_3.7_PENDIENTE.md).
 - No hay escaneo continuo de CVEs en el pipeline.
 
 Comandos recomendados en el servidor:
@@ -132,6 +147,9 @@ docker compose -f panel_web/docker-compose.dokploy.yml config
 - Cada job, descarga, borrado y página se filtra por `owner_id`; admin separado.
 - Sin SQL concatenado con datos de usuario; consultas parametrizadas.
 - Nombres de archivo saneados y rutas validadas con `is_relative_to`.
+- PDFs guardados con permisos `0600` y directorios `0700`; sin bit ejecutable.
+- Validación de cabecera real de PDF, estructura, cifrado y número de páginas;
+  avisos de contenido activo sin bloqueo automático.
 - CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`,
   `Permissions-Policy`.
 - `panel-web`: non-root, `read_only`, `cap_drop: ALL`,
@@ -157,10 +175,11 @@ docker compose -f panel_web/docker-compose.dokploy.yml config
 
 1. Desplegar las correcciones de esta auditoría y verificar `/static/admin.html`
    y `/admin`.
-2. Añadir antivirus/aislamiento del parser de PDFs.
+2. Mantener el control de contenido activo y revisar los avisos del audit.
 3. Automatizar `pip-audit` + Trivy en CI y revisar PaddleOCR.
 4. Backup cifrado y disco cifrado para `/data`.
 5. Opcional: logout POST, cookie `__Host-`, self-host de fuentes.
+6. Reevaluar ClamAV si cambia el modelo de confianza o lo exige cumplimiento.
 
 > Este informe es una revisión de código y configuración, no una garantía ni un
 > pentest formal. Para producción regulada, complementar con un pentest externo.

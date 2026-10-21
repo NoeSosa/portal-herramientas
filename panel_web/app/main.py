@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import re
 import shutil
 import uuid
@@ -44,6 +45,9 @@ from .auth import (
 )
 
 logger = logging.getLogger("panel_web")
+
+# Los PDFs y artefactos nuevos nacen solo para el uid del panel.
+os.umask(0o077)
 
 
 def _configurar_logging() -> None:
@@ -270,10 +274,39 @@ def _nombre_seguro(nombre: str | None) -> str:
     return (nombre[:120] or "documento.pdf")
 
 
-def _validar_pdf(contenido: bytes) -> int:
+_MARCAS_PDF_ACTIVO = (
+    (b"/JavaScript", "JavaScript"),
+    (b"/JS", "JS"),
+    (b"/Launch", "Launch"),
+    (b"/EmbeddedFile", "EmbeddedFile"),
+    (b"/RichMedia", "RichMedia"),
+    (b"/OpenAction", "OpenAction"),
+    (b"/AA", "AdditionalActions"),
+    (b"/XFA", "XFA"),
+)
+
+
+def _avisos_pdf(contenido: bytes) -> list[str]:
+    """Detecta contenido activo obvio. No rechaza: solo deja rastro.
+
+    Un PDF escaneado normal no debería traer JavaScript, adjuntos ni acciones
+    automáticas. Se avisa para revisión, pero no se bloquea por posibles falsos
+    positivos (por ejemplo, texto que mencione `/JS`).
+    """
+    avisos: list[str] = []
+    for marca, nombre in _MARCAS_PDF_ACTIVO:
+        if marca in contenido:
+            avisos.append(nombre)
+    if b"%%EOF" not in contenido[-4096:]:
+        avisos.append("sin %%EOF")
+    return sorted(set(avisos))
+
+
+def _validar_pdf(contenido: bytes) -> tuple[int, list[str]]:
     if len(contenido) > settings.max_upload_bytes:
         raise HTTPException(status_code=413, detail="El archivo supera el límite permitido.")
-    if b"%PDF-" not in contenido[:1024]:
+    # Cabecera real de PDF (1.x/2.x), no solo la extensión ni un byte perdido.
+    if not re.search(rb"%PDF-[12]\.\d", contenido[:1024]):
         raise HTTPException(status_code=400, detail="El archivo no es un PDF válido.")
     doc = None
     try:
@@ -295,7 +328,7 @@ def _validar_pdf(contenido: bytes) -> int:
             status_code=400,
             detail=f"El PDF supera el máximo de {settings.max_pages} páginas.",
         )
-    return paginas
+    return paginas, _avisos_pdf(contenido)
 
 
 def _job_publico(job: Any, stats: dict[str, int | float]) -> dict[str, Any]:
@@ -364,7 +397,7 @@ async def crear_job(
 
     contenido = await archivo.read(settings.max_upload_bytes + 1)
     # PyMuPDF es CPU-bound: no bloquear el event loop con un PDF grande.
-    paginas = await run_in_threadpool(_validar_pdf, contenido)
+    paginas, avisos_pdf = await run_in_threadpool(_validar_pdf, contenido)
     nombre = _nombre_seguro(archivo.filename)
 
     con = _conexion()
@@ -392,9 +425,15 @@ async def crear_job(
     job_id = uuid.uuid4().hex
     job_dir = _job_dir(uid, job_id)
     entrada = job_dir / "input"
-    entrada.mkdir(parents=True, exist_ok=True)
+    job_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    entrada.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(job_dir, 0o700)
+    os.chmod(entrada, 0o700)
     stored_name = f"{job_id}.pdf"
-    (entrada / stored_name).write_bytes(contenido)
+    ruta_pdf = entrada / stored_name
+    ruta_pdf.write_bytes(contenido)
+    # El PDF es dato, nunca ejecutable, y solo lo lee el uid del panel/worker.
+    os.chmod(ruta_pdf, 0o600)
 
     con = _conexion()
     try:
@@ -416,7 +455,10 @@ async def crear_job(
             action="upload",
             job_id=job_id,
             ip=ip_cliente(request),
-            detail=f"{nombre} · {paginas} págs.",
+            detail=(
+                f"{nombre} · {paginas} págs."
+                + (f" · avisos PDF: {', '.join(avisos_pdf)}" if avisos_pdf else "")
+            ),
         )
         promedio = db.promedio_segundos_por_pagina(con)
         stats = db.estadisticas_cola(con, job, promedio)
