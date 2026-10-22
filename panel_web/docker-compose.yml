@@ -20,7 +20,8 @@ services:
       - |
         mkdir -p /data/users /data/inventarios
         chown -R 1000:1000 /data
-        chmod -R 750 /data
+        find /data -type d -exec chmod 700 {} +
+        find /data -type f -exec chmod 600 {} +
     volumes:
       - panel_data:/data
     networks:
@@ -79,8 +80,21 @@ services:
     container_name: pdfsep-worker
     restart: unless-stopped
     command: ["python3", "-m", "app.worker"]
-    env_file:
-      - .env
+    # El OCR no recibe secretos Microsoft ni la clave de firma de sesiones.
+    environment:
+      DATA_DIR: ${DATA_DIR:-/data}
+      DB_PATH: ${DB_PATH:-}
+      INVENTORY_DIR: ${INVENTORY_DIR:-}
+      SEPARATOR_CODE_DIR: ${SEPARATOR_CODE_DIR:-/separador_pdfs}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Mexico_City}
+      OCR_WORKERS: ${OCR_WORKERS:-2}
+      JOB_TIMEOUT_SECONDS: ${JOB_TIMEOUT_SECONDS:-7200}
+      RETENTION_DAYS: ${RETENTION_DAYS:-30}
+      AVG_SECONDS_PER_PAGE: ${AVG_SECONDS_PER_PAGE:-12}
+      PANEL_OCR_SOLO_SN: ${PANEL_OCR_SOLO_SN:-1}
+      PANEL_OCR_FRANJA: ${PANEL_OCR_FRANJA:-0.35}
+      PANEL_OCR_SECUENCIAL: ${PANEL_OCR_SECUENCIAL:-0}
+      PANEL_OCR_BANDAS: ${PANEL_OCR_BANDAS:-4}
     volumes:
       - panel_data:/data
     depends_on:

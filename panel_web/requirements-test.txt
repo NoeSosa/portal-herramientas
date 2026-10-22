@@ -1,0 +1,5 @@
+-r requirements.txt
+# Mismo parser que la imagen OCR existente; no cambiar el motor en esta revisión.
+PyMuPDF==1.26.0
+pip-audit==2.10.1
+PyYAML==6.0.3

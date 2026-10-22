@@ -1,5 +1,12 @@
 # Auditoría de seguridad — panel público
 
+> Actualización 2026-10-22: se implementaron controles HTTP, actualización de
+> dependencias del panel y endurecimiento de worker/proxy. El estado actual,
+> las 39 pruebas locales y los riesgos aún abiertos están en
+> [SEGURIDAD_PETICIONES_2026-10-22.md](../docs/SEGURIDAD_PETICIONES_2026-10-22.md).
+> Las conclusiones históricas de dependencias/aislamiento que siguen abajo no
+> sustituyen esa verificación ni describen por sí solas la imagen desplegada.
+
 **Fecha:** 2026-10-21  
 **Alcance:** `panel_web` (FastAPI + Entra ID), worker OCR, inventario, ZIPs,
 contenedores y exposición de `pdf-separator.duckdns.org`.  

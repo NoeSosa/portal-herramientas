@@ -32,6 +32,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__, db, inventario
+from .peticiones import GuardiaPeticiones
+from .esquemas import BorradoEquiposEntrada, EquipoEntrada
 from .auth import (
     autenticar_callback,
     cerrar_sesion,
@@ -76,6 +78,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(GuardiaPeticiones)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret,
@@ -777,9 +780,10 @@ async def admin_equipos(
 
 @app.post("/api/admin/equipos")
 async def admin_guardar_equipo(
-    request: Request, admin=Depends(admin_actual), _csrf=Depends(verificar_csrf)
+    request: Request, entrada: EquipoEntrada,
+    admin=Depends(admin_actual), _csrf=Depends(verificar_csrf)
 ) -> dict[str, Any]:
-    datos = await request.json()
+    datos = entrada.model_dump(exclude_unset=True)
     sn = (datos.get("sn") or "").strip()
     if not sn:
         raise HTTPException(status_code=400, detail="Falta el serial.")
@@ -805,9 +809,10 @@ async def admin_guardar_equipo(
 
 @app.post("/api/admin/equipos/borrar")
 async def admin_borrar_equipos(
-    request: Request, admin=Depends(admin_actual), _csrf=Depends(verificar_csrf)
+    request: Request, entrada: BorradoEquiposEntrada,
+    admin=Depends(admin_actual), _csrf=Depends(verificar_csrf)
 ) -> dict[str, Any]:
-    datos = await request.json()
+    datos = entrada.model_dump(exclude_unset=True)
     if (datos.get("confirm") or "").strip().upper() != "BORRAR":
         raise HTTPException(
             status_code=400,

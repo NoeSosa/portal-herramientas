@@ -246,6 +246,9 @@ PY
 
 ## Validación local
 
+Se requiere Python **3.11 o superior**, preferiblemente en un entorno virtual.
+Instala `python -m pip install -r panel_web/requirements-test.txt` desde la raíz.
+
 ```bash
 python -m py_compile panel_web/app/*.py separador_pdfs/separador_auto.py
 node --check panel_web/static/app.js
@@ -254,3 +257,29 @@ python -m unittest discover -s panel_web/tests -v
 
 No hay credenciales de Entra en el repositorio. Sin ellas, la app no arranca:
 es intencional.
+
+Las pruebas HTTP usan credenciales ficticias y cookies firmadas con una clave
+exclusiva de pruebas. No contactan Microsoft ni requieren copiar `.env`.
+El worker ya no necesita secretos OIDC; el proceso web sí los sigue exigiendo.
+
+### Endurecimiento de peticiones (2026-10-22)
+
+- Sesión y CSRF se comprueban antes de procesar multipart; también se valida
+  `Origin` cuando el navegador lo envía. Clientes API sin `Origin` mantienen
+  acceso con cookie y token CSRF válidos.
+- El cuerpo completo está acotado: PDF configurado + 1 MiB para multipart,
+  Excel 20 MiB + 1 MiB y otras peticiones 1 MiB, incluso sin `Content-Length`.
+- `/auth/login` y `/auth/callback`: 120 peticiones/minuto por IP observada,
+  por proceso; respuesta 429 con `Retry-After`. Complementa los controles de
+  Entra y del proxy, sin sustituirlos.
+- Dokploy: buffering máximo 55 MiB, 1 MiB en memoria, 60 peticiones/s con
+  ráfaga de 120 y máximo 64 en vuelo. Si aumentas `MAX_UPLOAD_MB` por encima
+  de 50, ajusta también este máximo y el de Caddy.
+- Define `FORWARDED_ALLOW_IPS` con IP(s)/CIDR(s) exclusivos del proxy real.
+  Por defecto solo se confía en `127.0.0.1`: el sitio funciona, pero en Docker
+  se audita la IP del proxy y sus usuarios comparten el limitador de auth
+  hasta configurar su dirección. No uses `*` ni toda una red compartida.
+- Reconstruye `panel-web` y recrea `panel-worker` para aplicar dependencias,
+  variables y controles. El código local no actualiza por sí solo producción.
+
+Resultado, límites y pendientes: [verificación de seguridad de peticiones](../docs/SEGURIDAD_PETICIONES_2026-10-22.md).

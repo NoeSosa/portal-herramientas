@@ -106,7 +106,7 @@ class Settings:
         return (email or "").strip().lower() in self.admin_emails
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, *, require_auth: bool = True) -> "Settings":
         app_env = _texto("APP_ENV", "production").lower()
         domain = _texto("DOMAIN", "pdf-separator.duckdns.org")
         data_dir = Path(_texto("DATA_DIR", "/data")).resolve()
@@ -130,15 +130,15 @@ class Settings:
             )
             if not valor
         ]
-        if faltantes:
+        if require_auth and faltantes:
             raise ValueError(
                 "Faltan variables obligatorias: " + ", ".join(faltantes)
             )
-        if len(session_secret) < 32:
+        if require_auth and len(session_secret) < 32:
             raise ValueError("SESSION_SECRET debe tener al menos 32 caracteres.")
         if authority_override and not authority_override.startswith("https://"):
             raise ValueError("MS_AUTHORITY debe ser una URL https:// válida.")
-        if not allowed_domain and not allowed_emails:
+        if require_auth and not allowed_domain and not allowed_emails:
             raise ValueError(
                 "Define ALLOWED_DOMAIN o ALLOWED_EMAILS: el panel no puede quedar abierto."
             )
@@ -146,6 +146,8 @@ class Settings:
         hosts = _lista("ALLOWED_HOSTS") or frozenset({domain, "localhost", "127.0.0.1"})
         if "*" in hosts:
             raise ValueError("ALLOWED_HOSTS no puede contener '*'.")
+        if require_auth and "*" in _lista("FORWARDED_ALLOW_IPS"):
+            raise ValueError("FORWARDED_ALLOW_IPS debe identificar proxies concretos, no '*'.")
 
         return cls(
             app_name=_texto("APP_NAME", "Separador de PDFs"),

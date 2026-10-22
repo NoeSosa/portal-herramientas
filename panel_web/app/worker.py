@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from . import db
-from .config import obtener_settings
+from .config import Settings
 
-settings = obtener_settings()
+# El worker solo procesa archivos: no debe necesitar secretos OIDC o de sesión.
+settings = Settings.from_env(require_auth=False)
 logger = logging.getLogger("panel_web.worker")
 _PARAR = False
 
@@ -153,6 +154,40 @@ def _mensaje_error(rc: int) -> str:
     return "No se pudo procesar el PDF. Revisa que no esté dañado e inténtalo de nuevo."
 
 
+def _detener_proceso(proc: subprocess.Popen) -> None:
+    """En Linux se termina también a los lectores OCR descendientes."""
+    try:
+        if os.name == "posix":
+            os.killpg(proc.pid, signal.SIGTERM)
+        elif proc.poll() is None:
+            proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        # El padre puede salir antes que sus hijos: finalizar el grupo igualmente.
+        if os.name == "posix":
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif proc.poll() is None:
+            proc.kill()
+        proc.wait()
+    except ProcessLookupError:
+        proc.wait()
+
+
+def _entorno_base_ocr() -> dict[str, str]:
+    """Solo heredar ajustes de runtime; los secretos web nunca llegan al motor."""
+    return {k: v for k, v in os.environ.items() if k in {
+        "PATH", "LD_LIBRARY_PATH", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
+        "SYSTEMROOT", "SystemRoot", "WINDIR", "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+        "PANEL_OCR_SOLO_SN", "PANEL_OCR_FRANJA", "PANEL_OCR_SECUENCIAL", "PANEL_OCR_BANDAS",
+    }}
+
+
 def procesar(job: Any) -> None:
     job_id = job["id"]
     owner_id = int(job["owner_id"])
@@ -163,7 +198,7 @@ def procesar(job: Any) -> None:
         ruta.mkdir(parents=True, exist_ok=True)
 
     log_path = job_dir / "pipeline.log"
-    env = os.environ.copy()
+    env = _entorno_base_ocr()
     env.update({
         "HOME": str(settings.data_dir),
         "PYTHONUNBUFFERED": "1",
@@ -196,16 +231,17 @@ def procesar(job: Any) -> None:
                 env=env,
                 stdout=log,
                 stderr=subprocess.STDOUT,
+                start_new_session=(os.name == "posix"),
             )
             logger.info("Job %s iniciado (pid %s)", job_id, proc.pid)
 
             while proc.poll() is None:
                 if _PARAR:
                     parada = True
-                    proc.terminate()
+                    _detener_proceso(proc)
                     break
                 if time.monotonic() - inicio > settings.job_timeout_seconds:
-                    proc.kill()
+                    _detener_proceso(proc)
                     db.fallar_job(con, job_id, "El documento tardó demasiado y se canceló.")
                     logger.error("Job %s agotó el tiempo", job_id)
                     return
@@ -235,6 +271,8 @@ def procesar(job: Any) -> None:
         db.fallar_job(con, job_id, "No se pudo iniciar el procesamiento.")
         return
     finally:
+        if proc is not None and proc.poll() is None:
+            _detener_proceso(proc)
         con.close()
 
     con = db.conectar(settings.db_path)

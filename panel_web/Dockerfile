@@ -35,7 +35,7 @@ USER portal
 
 EXPOSE 8000
 
-# Caddy está delante y es el único proxy de confianza dentro de la red.
+# FORWARDED_ALLOW_IPS define proxies concretos; nunca confiar en cualquier origen.
 CMD ["python3", "-m", "uvicorn", "app.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips=*", "--no-server-header"]
+     "--proxy-headers", "--no-server-header"]

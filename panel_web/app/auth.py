@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import time
 from collections import defaultdict, deque
+from urllib.parse import urlsplit
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import HTTPException, Request
@@ -51,10 +52,7 @@ limite_subidas = LimiteSubidas(settings.max_uploads_per_hour)
 
 
 def ip_cliente(request: Request) -> str:
-    """IP para auditoría. Caddy es el único proxy delante del panel."""
-    reenviada = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    if reenviada:
-        return reenviada[:64]
+    """Uvicorn normaliza la IP solo si el peer es un proxy autorizado."""
     return (request.client.host if request.client else "")[:64]
 
 
@@ -94,9 +92,18 @@ def usuario_actual(request: Request) -> sqlite3.Row:
 
 
 def verificar_csrf(request: Request) -> None:
+    # El token sigue siendo obligatorio; Origin añade defensa frente a sitios ajenos.
+    origen = request.headers.get("origin")
+    destino = urlsplit(settings.redirect_uri)
+    if origen and origen != f"{destino.scheme}://{destino.netloc}":
+        raise HTTPException(status_code=403, detail="Origen de petición no permitido.")
     esperado = request.session.get("csrf")
     recibido = request.headers.get("x-csrf-token")
-    if not esperado or not recibido or not secrets.compare_digest(esperado, recibido):
+    if (
+        not isinstance(esperado, str)
+        or not recibido
+        or not secrets.compare_digest(esperado.encode("utf-8"), recibido.encode("utf-8"))
+    ):
         raise HTTPException(status_code=403, detail="Token CSRF inválido.")
 
 
