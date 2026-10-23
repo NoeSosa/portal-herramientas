@@ -129,7 +129,8 @@ WORKERS = 3
 # Importar helpers del separador
 sys.path.insert(0, SEP_DIR)
 from separador_pdf import (normalizar_sn, generar_variantes_ocr,
-                           identificar_modelo, ocr_rango)  # noqa: E402
+                           identificar_modelo, ocr_rango, datos_uso_hp,
+                           preparar_uso_hp, revisar_grupo_hp)  # noqa: E402
 
 
 def load_creds():
@@ -641,7 +642,8 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
         info = buscar_serial(txt, idx, idx_norm)
         modelo = identificar_modelo(txt, info["sn"] if info else None)
         # Serial detectado por patrón (aunque no esté en el inventario) para nombrar el archivo
-        sn_ocr = info["sn"] if info else None
+        datos_hp = datos_uso_hp(txt)
+        sn_ocr = info["sn"] if info else (datos_hp["sn"] if datos_hp else None)
         if not sn_ocr:
             # 1º intento: etiqueta explícita "Numero serie equipo : XXXX"
             m_etq = patron_serie_etiqueta.search(txt)
@@ -735,6 +737,8 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
                         "sn_ocr": sn_ocr, "es_config_ricoh": es_config_ricoh,
                         "sede_huella": sede_huella})
 
+    paginas, descartadas_hp = preparar_uso_hp(paginas)
+
     # Emparejar Pantum P1-P2 adyacentes
     huérf = [p for p in paginas if p["is_p1"] or p["is_p2"]]
     while True:
@@ -779,7 +783,7 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
                     quitar_nums.add(p["num"])
     # FIX 2026-09-18: registrar las hojas descartadas para que la cuenta cuadre
     # (hojas origen = OK + POR_VERIFICAR + DESCARTADAS). Antes desaparecían sin rastro.
-    descartadas = []
+    descartadas = list(descartadas_hp)
     for p, _es_cfg in paginas_filtradas:
         if p["num"] in quitar_nums:
             descartadas.append({
@@ -854,13 +858,17 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
         mal = (modelo == "hp_501" and cant != 1) or (modelo == "kyocera" and cant != 1) \
             or (modelo == "pantum" and cant != 2) \
             or (modelo == "ricoh" and cant not in (2, 3, 5))
+        paginas_grupo = [p for p in paginas if p["num"] in g["pags"]]
+        mal_hp = revisar_grupo_hp(paginas_grupo)
+        mal = mal or mal_hp
         if mal or not g["info"]["sede"]:
             verificar.append({"nombre": g["info"]["sn"], "sn": g["info"]["sn"],
                               "marca": g["info"].get("marca"),
                               "modelo": modelo,
                               "sede": g["info"]["sede"] or (g.get("sede_final") or sede_doc),
                               "paginas": g["pags"],
-                              "razon": f"{modelo} con {cant} pág (esperaba 2/3/5 para Ricoh/1 HP/2 Pantum)"})
+                              "razon": ("HP E40040/X53052: uso ambiguo, duplicado o continuación sin pareja" if mal_hp else
+                                        f"{modelo} con {cant} pág (esperaba 2/3/5 para Ricoh/1 HP/2 Pantum)")})
         else:
             ok.append({"sn": g["info"]["sn"], "sede": g["info"]["sede"],
                        "modelo": modelo, "marca": g["info"]["marca"],

@@ -123,7 +123,98 @@ def validar_sn_contra_inventario(texto, sns_esperados):
             if pal_norm == sn_norm_esperado: return sn_real
     return None
 
+def modelo_hp_nuevo(texto):
+    """Sólo los dos modelos nuevos; no inferirlos por el prefijo del serial."""
+    if re.search(r"(?i)\be\s*4[0o][0o]4[0o]\b", texto):
+        return "hp_e40040"
+    if re.search(r"(?i)\bx\s*53[0o]5[2z]\b", texto):
+        return "hp_x53052"
+    return None
+
+
+def datos_uso_hp(texto):
+    """Clasificación conservadora de hojas E40040/X53052 leídas por OCR."""
+    modelo = modelo_hp_nuevo(texto)
+    if not modelo:
+        return None
+    low = texto.lower().translate(str.maketrans("áéíóú", "aeiou"))
+    uso = bool(re.search(r"\b(?:pagina\s+de\s+uso|usage\s+page)\b", low))
+    config = bool(re.search(r"\b(?:configuraci[o0]n|configuration|jetdirect)\b", low))
+    numero = re.search(r"\b(?:pagina|page)\s*[:#]?\s*([12ilz])\b", low)
+    pagina = {"1": 1, "i": 1, "l": 1, "2": 2, "z": 2}.get(numero.group(1)) if numero else None
+    serie = re.search(
+        r"(?i)(?:n[uú]mero\s+de\s+serie\s+del\s+producto|"
+        r"(?:product\s+)?serial\s+number)\s*[:#.-]?\s*([A-Z0-9]{6,16})\b", texto)
+    sn = serie.group(1).upper() if serie else None
+    if sn and not any(c.isdigit() for c in sn):
+        sn = None
+    return {"modelo": modelo, "tipo": "uso" if uso else "config" if config else "desconocido",
+            "pagina": pagina, "sn": sn}
+
+
+def preparar_uso_hp(paginas):
+    """Filtra configuración y hereda serie únicamente entre P1/P2 contiguas.
+
+    Conserva hojas ambiguas para revisión. Admite el esquema del pipeline
+    automático (info/sn_ocr) y el del separador directo (sn).
+    """
+    def serial(p):
+        return (p.get("info") or {}).get("sn") or p.get("sn") or p.get("sn_ocr")
+
+    descartadas = []
+    por_num = {p["num"]: p for p in paginas}
+    for p in paginas:
+        datos = datos_uso_hp(p.get("texto", ""))
+        if not datos:
+            continue
+        p["hp_uso"] = datos
+        p["modelo"] = datos["modelo"]
+        p["hp_revision"] = datos["tipo"] != "uso" or datos["pagina"] != 1
+        if datos["tipo"] == "config":
+            descartadas.append({"num": p["num"], "sn": serial(p) or datos["sn"] or "SIN_ID",
+                                "modelo": p["modelo"], "razon": "configuración/red HP E40040/X53052; no es página de uso"})
+
+    for p2 in paginas:
+        datos = p2.get("hp_uso", {})
+        if datos.get("tipo") != "uso" or datos.get("pagina") != 2:
+            continue
+        p1 = por_num.get(p2["num"] - 1)
+        anterior = (p1 or {}).get("hp_uso", {})
+        if (anterior.get("tipo") != "uso" or anterior.get("pagina") != 1
+                or anterior.get("modelo") != datos["modelo"] or not serial(p1)):
+            continue
+        if serial(p2) and normalizar_sn(serial(p2)) != normalizar_sn(serial(p1)):
+            p1["hp_revision"] = True
+            continue
+        for key in ("sn", "info", "sn_detect", "sn_ocr"):
+            if key in p1:
+                p2[key] = p1[key]
+        p2["hp_revision"] = False
+        p2["hp_pareja"] = p1["num"]
+
+    excluir = {p["num"] for p in descartadas}
+    return [p for p in paginas if p["num"] not in excluir], descartadas
+
+
+def revisar_grupo_hp(paginas):
+    """Una P1 sola o una P1 seguida de su P2; duplicados no se validan."""
+    nuevas = [p for p in paginas if p.get("hp_uso")]
+    if not nuevas:
+        return False
+    if len(nuevas) != len(paginas) or any(p.get("hp_revision") for p in nuevas):
+        return True
+    if len(nuevas) == 1:
+        return nuevas[0]["hp_uso"]["pagina"] != 1
+    if len(nuevas) != 2:
+        return True
+    p1, p2 = sorted(nuevas, key=lambda p: p["num"])
+    return p2.get("hp_pareja") != p1["num"]
+
+
 def identificar_modelo(texto, sn):
+    nuevo = modelo_hp_nuevo(texto)
+    if nuevo:
+        return nuevo
     texto_low = texto.lower()
     sn_low = str(sn).lower() if sn else ""
     if "phbtw" in sn_low or "vnb" in sn_low: return "hp_501"
@@ -185,6 +276,10 @@ def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
                         sn_encontrado = "VNB0B0" + sn_encontrado[6:]
                     break
 
+        datos_hp = datos_uso_hp(texto_pagina)
+        if not sn_encontrado and datos_hp:
+            sn_encontrado = datos_hp['sn']
+
         texto_low = texto_pagina.lower()
         es_doc_pantum = "pantum" in texto_low or "bm5100" in texto_low
         is_pantum_p1 = False
@@ -212,8 +307,13 @@ def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
             if m:
                 sn_encontrado = m.group(1)
 
-        paginas_info.append({'num': num_pagina, 'sn': sn_encontrado, 'modelo': modelo,
+        paginas_info.append({'num': num_pagina, 'texto': texto_pagina, 'sn': sn_encontrado, 'modelo': modelo,
                              'is_p1': is_pantum_p1, 'is_p2': is_pantum_p2})
+
+    paginas_info, descartadas_hp = preparar_uso_hp(paginas_info)
+    for p in paginas_info:
+        if p.get("hp_uso") and not p["sn"]:
+            p["sn"] = f"Sin_Identificar_pag{p['num'] + 1}"
 
     # --- Emparejamiento topológico P1-P2 (Pantum) ---
     pantum_unpaired = [p for p in paginas_info if p['is_p1'] or p['is_p2']]
@@ -272,6 +372,7 @@ def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
             lista_paginas.sort(key=lambda x: not x['is_p1'])
 
         requiere_revision = not en_inventario or str(sn).startswith(('Sin_', 'Pantum_Huerfana'))
+        if revisar_grupo_hp(lista_paginas): requiere_revision = True
         if modelo == 'hp_501' and cant != 1: requiere_revision = True
         if modelo == 'kyocera' and cant != 1: requiere_revision = True
         if modelo == 'pantum' and cant != 2: requiere_revision = True
