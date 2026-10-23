@@ -1,8 +1,10 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
+# Capa HTTP compartida; el motor OCR conserva sus versiones en Dockerfile.ocr.
+fastapi==0.161.1
+starlette==1.9.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
 pydantic-settings==2.7.0
-python-multipart==0.0.20
+python-multipart==0.0.32
 redis==5.2.1
 rq==2.1.0
 httpx==0.28.1

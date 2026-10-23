@@ -23,7 +23,7 @@ services:
   # corre con uid 1000, necesitan que /data les pertenezca. Este servicio de
   # vida corta lo arregla y termina; los demás esperan a que lo complete.
   inicializador:
-    image: alpine:3.19
+    image: alpine:3.24.3
     container_name: hw-init
     restart: "no"
     command:

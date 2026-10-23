@@ -2,17 +2,18 @@
 # =============================================================================
 # Despliegue del Portal de Herramientas desde el contenedor de OpenClaw
 # =============================================================================
-# Reconstruye las imágenes y recrea los contenedores SIN `docker compose`
+# Reconstruye backend/frontend y recrea contenedores SIN `docker compose`
 # (no está disponible en este CLI) replicando exactamente el docker-compose.yml.
 #
 # ⚠️ El docker-compose.yml es la fuente de verdad. Si cambia un puerto, un
 #    volumen o una variable, hay que actualizar este script también.
 #
 # Uso:
-#   bash scripts/desplegar.sh              # construye todo y recrea
+#   bash scripts/desplegar.sh              # actualiza web; conserva la imagen OCR
 #   bash scripts/desplegar.sh --solo-backend
 #   bash scripts/desplegar.sh --sin-ocr    # omite la imagen pesada (2-5 min)
 #   bash scripts/desplegar.sh --estado     # solo muestra el estado actual
+#   bash scripts/desplegar.sh --reconstruir-ocr  # reconstrucción deliberada del motor
 # =============================================================================
 set -euo pipefail
 
@@ -34,15 +35,16 @@ PATH_CON_VENV="/home/node/.openclaw/workspace/venv/bin:/opt/venv/bin:/usr/local/
 PATH_SIN_VENV="/opt/venv/bin:/usr/local/bin:/usr/bin:/bin"
 
 SOLO_BACKEND=0
-SIN_OCR=0
+SIN_OCR=1
 ESTADO=0
 
 for arg in "$@"; do
   case "$arg" in
     --solo-backend) SOLO_BACKEND=1 ;;
     --sin-ocr)      SIN_OCR=1 ;;
+    --reconstruir-ocr) SIN_OCR=0 ;;
     --estado)       ESTADO=1 ;;
-    -h|--help)      sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "Opción desconocida: $arg" >&2; exit 2 ;;
   esac
 done
@@ -63,6 +65,12 @@ fi
 
 if [[ ! -f .env ]]; then
   error "Falta .env en $DIRECTORIO. Copia .env.example y rellénalo."
+  exit 1
+fi
+
+# Las actualizaciones HTTP no deben resolver otra vez las dependencias OCR.
+if [[ $SIN_OCR -eq 1 ]] && ! docker image inspect herramientas-web-ocr:local >/dev/null 2>&1; then
+  error "No existe la imagen OCR validada. Prepárala explícitamente con --reconstruir-ocr."
   exit 1
 fi
 

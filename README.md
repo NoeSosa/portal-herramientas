@@ -32,6 +32,11 @@ bash scripts/desplegar.sh
 `docker-compose.yml` es la fuente de verdad de la topología. Si cambia un puerto,
 un volumen o una variable, hay que reflejarlo también en `scripts/desplegar.sh`.
 
+El despliegue normal conserva la imagen OCR validada. En una instalación inicial,
+si todavía no existe `herramientas-web-ocr:local`, su construcción es explícita:
+`bash scripts/desplegar.sh --reconstruir-ocr`. No uses esa opción para aplicar
+actualizaciones de bibliotecas HTTP o del frontend.
+
 ## Datos que no van al repositorio
 
 `.env`, bases de datos, `node_modules/`, resultados y documentos escaneados quedan
@@ -261,9 +266,15 @@ herramientas-web/
 
 ## Script de despliegue
 
-`scripts/desplegar.sh` reconstruye y recrea el stack replicando el compose.
-Antes de la imagen OCR materializa `backend/separador/` desde `separador/` con
-`scripts/preparar_separador.sh`.
+`scripts/desplegar.sh` reconstruye backend/frontend y recrea el stack replicando
+el compose. Por defecto reutiliza la imagen OCR y conserva su worker.
+Solo con `--reconstruir-ocr` materializa `backend/separador/` desde `separador/`
+y reconstruye la imagen pesada con `scripts/preparar_separador.sh`.
+El sincronizador tampoco reconstruye OCR automáticamente: requiere
+`RECONSTRUIR_OCR_AUTORIZADO=1` para habilitar esa operación deliberada.
+
+La actualización de dependencias del 2026-10-23 y su validación están en
+[`docs/ACTUALIZACION_DEPENDENCIAS_2026-10-23.md`](docs/ACTUALIZACION_DEPENDENCIAS_2026-10-23.md).
 
 > **Nota:** `sincronizar.sh` y `desplegar.sh` se conservan a propósito durante
 > la sincronización. Si cambias alguno, el servidor seguirá usando su copia

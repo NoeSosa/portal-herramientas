@@ -5,7 +5,7 @@
 # =============================================================================
 
 # --- Etapa 1: compilar ----------------------------------------------------
-FROM node:22-alpine AS constructor
+FROM node:22.23.4-alpine AS constructor
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # --- Etapa 2: servir ------------------------------------------------------
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30.6-alpine AS runtime
 
 # Config propia: proxy a /api y cabeceras de seguridad.
 COPY nginx.conf /etc/nginx/conf.d/default.conf

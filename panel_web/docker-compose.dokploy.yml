@@ -13,7 +13,7 @@ name: pdf-separator
 
 services:
   panel-init:
-    image: alpine:3.19
+    image: alpine:3.24.3
     container_name: pdfsep-init
     restart: "no"
     command:

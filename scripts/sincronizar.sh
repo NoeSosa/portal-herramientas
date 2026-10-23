@@ -248,7 +248,13 @@ if ! docker version --format '{{.Server.Version}}' >/dev/null 2>&1; then
 fi
 
 REBUILD_OCR=0
-if printf '%s\n' "${CAMBIOS[@]}" | grep -qE 'separador|backend'; then REBUILD_OCR=1; fi
+# No reconstruir el motor por un cambio HTTP. La imagen validada se conserva
+# incluso al sincronizar código; una actualización OCR requiere autorización
+# explícita del operador y validación ARM64 separada.
+if [[ "${RECONSTRUIR_OCR_AUTORIZADO:-0}" == "1" ]] \
+   && printf '%s\n' "${CAMBIOS[@]}" | grep -qE 'separador|backend'; then
+  REBUILD_OCR=1
+fi
 
 resultado=""
 if [[ $REBUILD_OCR -eq 1 ]]; then
@@ -271,8 +277,8 @@ if printf '%s\n' "${CAMBIOS[@]}" | grep -qE 'frontend|panel_separador'; then
     registrar "ERROR en scripts/desplegar.sh (ver el registro)"
     resultado+="fallo al desplegar"
   fi
-elif [[ $REBUILD_OCR -eq 1 ]]; then
-  registrar "recreando panel y worker OCR"
+elif [[ $REBUILD_OCR -eq 1 ]] || printf '%s\n' "${CAMBIOS[@]}" | grep -qx 'backend'; then
+  registrar "actualizando backend y panel; se conserva el worker OCR existente"
   if ( cd "$PORTAL" && bash scripts/desplegar.sh --solo-backend --sin-ocr >>"$REGISTRO" 2>&1 ); then
     resultado+="contenedores recreados"
   else
