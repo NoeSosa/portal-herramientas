@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025l">
+  <link rel="stylesheet" href="/static/style.css?v=20261025n">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -216,7 +216,7 @@
           <div><span class="mono-label">DUPLICADOS</span><strong id="cov-duplicados">—</strong></div>
         </div>
 
-        <div class="coverage-filters">
+        <div class="coverage-filters filter-bar" id="cov-filter-bar">
           <input id="cov-buscar" class="coverage-search" type="search" placeholder="Buscar serial, ubicación, marca…">
           <select id="cov-filtro-estado" class="month-input" aria-label="Faltantes o escaneados">
             <option value="">todos los registros</option>
@@ -226,6 +226,9 @@
           <select id="cov-filtro-estatus" class="month-input" aria-label="Estatus"><option value="">todos los estatus</option></select>
           <select id="cov-filtro-marca" class="month-input" aria-label="Marca"><option value="">todas las marcas</option></select>
           <select id="cov-filtro-piso" class="month-input" aria-label="Piso"><option value="">todos los pisos</option></select>
+          <div class="filter-active" id="cov-filtros-activos"></div>
+          <button class="btn-text filter-clear" type="button" id="cov-clear" hidden>Limpiar filtros</button>
+          <span class="mono-label filter-count" id="cov-filtros-count" aria-live="polite"></span>
         </div>
 
         <div class="coverage-block">
@@ -236,9 +239,9 @@
               <button class="btn btn-primary" type="button" id="cov-add-inline">Agregar equipo</button>
             </div>
           </div>
-          <div class="table-scroll">
+          <div class="table-scroll coverage-scroll">
             <table class="admin-table coverage-table">
-              <thead><tr><th>Sede</th><th>Serial</th><th>Marca</th><th>Modelo</th><th>Ubicación</th><th>Piso</th><th>Estatus</th><th></th></tr></thead>
+              <thead><tr><th scope="col">Sede</th><th scope="col">Serial</th><th scope="col">Marca</th><th scope="col">Modelo</th><th scope="col">Ubicación</th><th scope="col">Piso</th><th scope="col">Estatus</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
               <tbody id="cov-faltantes-body"></tbody>
             </table>
           </div>
@@ -248,9 +251,9 @@
           <div class="coverage-block-head">
             <span class="mono-label">ESCANEADOS / DUPLICADOS</span>
           </div>
-          <div class="table-scroll">
+          <div class="table-scroll coverage-scroll">
             <table class="admin-table coverage-table">
-              <thead><tr><th>Serial</th><th>Fecha</th><th>Usuario</th><th>Documento</th><th>Estado</th><th class="cov-admin-col" hidden>Acción</th></tr></thead>
+              <thead><tr><th scope="col">Serial</th><th scope="col">Fecha</th><th scope="col">Usuario</th><th scope="col">Documento</th><th scope="col">Estado</th><th class="cov-admin-col" scope="col" hidden>Acción</th></tr></thead>
               <tbody id="cov-escaneados-body"></tbody>
             </table>
           </div>
@@ -359,6 +362,6 @@
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261025l" defer></script>
+  <script src="/static/app.js?v=20261025n" defer></script>
 </body>
 </html>

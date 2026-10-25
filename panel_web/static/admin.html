@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025l">
-  <link rel="stylesheet" href="/static/admin.css?v=20261025l">
+  <link rel="stylesheet" href="/static/style.css?v=20261025n">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025n">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -241,12 +241,15 @@
         </p>
       </dialog>
 
-      <div class="inventory-filters">
+      <div class="inventory-filters filter-bar" id="inv-filter-bar">
         <input type="search" id="inv-q" placeholder="serial, marca, modelo, sede, ubicación o piso…">
-        <select id="inv-sede-filter"><option value="">todas las sedes</option></select>
-        <select id="inv-marca-filter"><option value="">todas las marcas</option></select>
-        <select id="inv-estatus-filter"><option value="">todos los estatus</option></select>
-        <select id="inv-piso-filter"><option value="">todos los pisos</option></select>
+        <select id="inv-sede-filter" aria-label="Sede"><option value="">todas las sedes</option></select>
+        <select id="inv-marca-filter" aria-label="Marca"><option value="">todas las marcas</option></select>
+        <select id="inv-estatus-filter" aria-label="Estatus"><option value="">todos los estatus</option></select>
+        <select id="inv-piso-filter" aria-label="Piso"><option value="">todos los pisos</option></select>
+        <div class="filter-active" id="inv-filtros-activos"></div>
+        <button class="btn-text filter-clear" type="button" id="inv-clear" hidden>Limpiar filtros</button>
+        <span class="mono-label filter-count" id="inv-filtros-count" aria-live="polite"></span>
       </div>
 
       <div class="inventory-danger">
@@ -255,9 +258,9 @@
         <span class="mono-label" id="inv-delete-status"></span>
       </div>
 
-      <div class="table-scroll">
+      <div class="table-scroll inventory-scroll">
         <table class="admin-table inventory-table">
-          <thead><tr><th>Serial</th><th>Marca</th><th>Modelo</th><th>Sede</th><th>Zona</th><th>Ubicación</th><th>Piso</th><th>Estatus</th><th>Origen</th><th></th></tr></thead>
+          <thead><tr><th scope="col">Serial</th><th scope="col">Marca</th><th scope="col">Modelo</th><th scope="col">Sede</th><th scope="col">Zona</th><th scope="col">Ubicación</th><th scope="col">Piso</th><th scope="col">Estatus</th><th scope="col">Origen</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
           <tbody id="inv-table-body"><tr><td colspan="10" class="admin-empty">Sin seriales todavía.</td></tr></tbody>
         </table>
       </div>
@@ -308,6 +311,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261025l" defer></script>
+  <script src="/static/admin.js?v=20261025n" defer></script>
 </body>
 </html>

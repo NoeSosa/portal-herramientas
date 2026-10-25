@@ -1030,3 +1030,62 @@
   .admin-modal { padding: 14px; }
   .inventory-field-wide { grid-column: span 1; }
 }
+
+/* Capa de sistema del inventario */
+.inventory-filters.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory-filters.filter-bar input,
+.inventory-filters.filter-bar select {
+  flex: 1 1 160px;
+  width: auto;
+  min-height: 34px;
+  height: 34px;
+  font-size: 10.5px;
+}
+
+.inventory-filters.filter-bar .filter-active {
+  flex: 1 1 100%;
+}
+
+.inventory-form input {
+  height: 36px;
+  font-size: 11px;
+}
+
+.inventory-form label {
+  font-size: 9px;
+}
+
+.admin-table {
+  font-size: 10.5px;
+}
+
+.admin-table th {
+  font-size: 9px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.admin-table td {
+  font-size: 10.5px;
+}
+
+.inventory-table td:nth-child(1) {
+  font-weight: 500;
+}
+
+.admin-modal .inventory-form-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 700px) {
+  .inventory-filters.filter-bar input,
+  .inventory-filters.filter-bar select {
+    flex: 1 1 100%;
+  }
+}

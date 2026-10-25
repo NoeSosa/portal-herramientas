@@ -162,6 +162,75 @@ function aplicarJob(nodo, job) {
   return nodo;
 }
 
+function crearStatusPill(estatus) {
+  const pill = document.createElement("span");
+  const clase = claseEstatus(estatus);
+  pill.className = "status-pill " + (clase || "status-ok");
+  pill.textContent = estatus || "Sin estatus";
+  return pill;
+}
+
+function pintarChips(
+  contenedor, filtros, clearId = "cov-clear", countId = "cov-filtros-count",
+) {
+  contenedor.textContent = "";
+  const activos = filtros.filter(Boolean);
+  const boton = document.getElementById(clearId);
+  const contador = document.getElementById(countId);
+  if (boton) boton.hidden = activos.length === 0;
+  if (contador) contador.textContent = activos.length
+    ? `${activos.length} filtro${activos.length === 1 ? "" : "s"}`
+    : "";
+  for (const filtro of activos) {
+    const chip = document.createElement("span");
+    chip.className = "filter-chip";
+    const texto = document.createElement("span");
+    texto.textContent = filtro.label;
+    const quitar = document.createElement("button");
+    quitar.type = "button";
+    quitar.setAttribute("aria-label", `Quitar ${filtro.label}`);
+    quitar.textContent = "×";
+    quitar.addEventListener("click", filtro.quitar);
+    chip.append(texto, quitar);
+    contenedor.appendChild(chip);
+  }
+}
+
+function actualizarChipsCobertura() {
+  const filtros = [];
+  const q = $("cov-buscar").value.trim();
+  if (q) {
+    filtros.push({
+      label: `Buscar: ${q}`,
+      quitar: () => { $("cov-buscar").value = ""; renderCobertura(); },
+    });
+  }
+  const pares = [
+    ["cov-filtro-estado", "Registros"],
+    ["cov-filtro-estatus", "Estatus"],
+    ["cov-filtro-marca", "Marca"],
+    ["cov-filtro-piso", "Piso"],
+  ];
+  for (const [id, etiqueta] of pares) {
+    const select = $(id);
+    if (!select.value) continue;
+    const texto = select.options[select.selectedIndex]?.textContent || select.value;
+    filtros.push({
+      label: `${etiqueta}: ${texto}`,
+      quitar: () => { select.value = ""; renderCobertura(); },
+    });
+  }
+  pintarChips($("cov-filtros-activos"), filtros);
+}
+
+function limpiarFiltrosCobertura() {
+  $("cov-buscar").value = "";
+  for (const id of ["cov-filtro-estado", "cov-filtro-estatus", "cov-filtro-marca", "cov-filtro-piso"]) {
+    $(id).value = "";
+  }
+  renderCobertura();
+}
+
 function claseEstatus(estatus) {
   const e = String(estatus || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (!e) return "";
@@ -307,6 +376,7 @@ function abrirEquipoForm(equipo) {
   cargarEstatusSugeridos();
   cargarUbicacionesUsuario($("eq-ubicacion").value, $("eq-sede").value);
   $("equipo-dialog").showModal();
+  window.setTimeout(() => $("eq-sn").focus(), 60);
 }
 
 async function guardarEquipoUsuario(evento) {
@@ -716,6 +786,7 @@ async function cargarCobertura(silencioso = false) {
   }
   estado.coberturaPeriodo = periodo;
   estado.coberturaSede = select.value;
+  $("cov-content").setAttribute("aria-busy", "true");
   try {
     const q = new URLSearchParams({ periodo });
     if (select.value) q.set("sede", select.value);
@@ -725,6 +796,8 @@ async function cargarCobertura(silencioso = false) {
     if (!silencioso) toast("Cobertura actualizada.", "info");
   } catch (error) {
     if (!silencioso) toast(error.message, "error");
+  } finally {
+    $("cov-content").removeAttribute("aria-busy");
   }
 }
 
@@ -766,6 +839,7 @@ function renderCobertura() {
   opciones("cov-filtro-estatus", unicos("estatus"), "todos los estatus");
   opciones("cov-filtro-marca", unicos("marca"), "todas las marcas");
   opciones("cov-filtro-piso", unicos("piso"), "todos los pisos");
+  actualizarChipsCobertura();
 
   $("cov-esperados").textContent = datos.esperados ?? 0;
   $("cov-escaneados").textContent = datos.escaneados ?? 0;
@@ -781,8 +855,23 @@ function renderCobertura() {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 8;
-    td.className = "admin-empty";
-    td.textContent = q ? "Sin coincidencias." : "No hay equipos inventariados en esta sede.";
+    td.className = "admin-empty table-empty";
+    const texto = document.createElement("span");
+    texto.textContent = q || fEstado || fEstatus || fMarca || fPiso
+      ? "No hay equipos con estos filtros."
+      : "No hay equipos inventariados en esta sede.";
+    td.appendChild(texto);
+    const accion = document.createElement("button");
+    accion.type = "button";
+    accion.className = "btn-text";
+    if (q || fEstado || fEstatus || fMarca || fPiso) {
+      accion.textContent = "Limpiar filtros";
+      accion.addEventListener("click", limpiarFiltrosCobertura);
+    } else {
+      accion.textContent = "Agregar equipo";
+      accion.addEventListener("click", () => abrirEquipoForm(null));
+    }
+    td.appendChild(accion);
     tr.appendChild(td);
     cuerpoF.appendChild(tr);
   } else {
@@ -791,11 +880,17 @@ function renderCobertura() {
       const clase = claseEstatus(e.estatus);
       if (clase) tr.classList.add(clase);
       if (!e.escaneado) tr.classList.add("faltante");
-      for (const v of [e.sede, e.sn, e.marca, e.modelo, e.ubicacion, e.piso, e.estatus]) {
-        const td = document.createElement("td");
-        td.textContent = v || "—";
-        tr.appendChild(td);
-      }
+      [e.sede, e.sn, e.marca, e.modelo, e.ubicacion, e.piso, e.estatus]
+        .forEach((v, indice) => {
+          const td = document.createElement("td");
+          if (indice === 6) {
+            td.className = "status-cell";
+            td.appendChild(crearStatusPill(v));
+          } else {
+            td.textContent = v || "—";
+          }
+          tr.appendChild(td);
+        });
       const tdAcc = document.createElement("td");
       const btn = document.createElement("button");
       btn.type = "button";
@@ -893,6 +988,7 @@ async function iniciar() {
   $("cov-reset").addEventListener("click", reiniciarCobertura);
   $("cov-add").addEventListener("click", () => abrirEquipoForm(null));
   $("cov-add-inline").addEventListener("click", () => abrirEquipoForm(null));
+  $("cov-clear").addEventListener("click", limpiarFiltrosCobertura);
   $("eq-cancel").addEventListener("click", () => $("equipo-dialog").close());
   $("equipo-form").addEventListener("submit", guardarEquipoUsuario);
   let timerEqUbicacion = null;

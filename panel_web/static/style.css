@@ -1551,3 +1551,242 @@ h1 {
 .admin-table tr.estado-baja td {
   background: #f7e1dc;
 }
+
+/* ================================================================
+   Capa de sistema: filtros, tablas, estados y modales
+   Aditiva: conserva la identidad editorial y las funcionalidades.
+   ================================================================ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Tipografía operativa: un poco más legible sin perder densidad. */
+.mono-label { font-size: 10px; }
+.coverage-table th { font-size: 9.5px; }
+.coverage-table td { font-size: 10.5px; }
+.coverage-filters .month-input,
+.coverage-search { min-height: 34px; font-size: 10.5px; }
+.btn-text { font-size: 10px; min-height: 30px; }
+.coverage-block-tools .btn { min-height: 32px; font-size: 10px; }
+
+/* Barra de filtros y chips activos. */
+.filter-bar {
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.filter-active {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 0;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--navy);
+  font: 500 9px/1.3 var(--mono);
+  letter-spacing: .02em;
+}
+
+.filter-chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0 0 0 3px;
+  font: 400 13px/1 var(--mono);
+  cursor: pointer;
+}
+
+.filter-clear[hidden] { display: none; }
+.filter-clear { margin-left: auto; }
+.filter-count { color: var(--muted); white-space: nowrap; }
+
+/* Tablas: encabezado fijo, identificador fijo y filas legibles. */
+.coverage-scroll,
+.inventory-scroll {
+  max-height: min(62vh, 720px);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.coverage-scroll .coverage-table thead th,
+.inventory-scroll .inventory-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--paper);
+  box-shadow: 0 1px 0 var(--line);
+}
+
+.coverage-scroll .coverage-table th:first-child,
+.coverage-scroll .coverage-table td:first-child,
+.inventory-scroll .inventory-table th:first-child,
+.inventory-scroll .inventory-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--paper);
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.coverage-scroll .coverage-table thead th:first-child,
+.inventory-scroll .inventory-table thead th:first-child {
+  z-index: 5;
+}
+
+.coverage-table td,
+.inventory-table td {
+  height: 42px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.coverage-table tbody tr:hover td,
+.inventory-table tbody tr:hover td {
+  background: var(--paper-2);
+}
+
+/* Estatus: texto + color, sin teñir toda la fila. */
+.coverage-table tr.estado-alerta td,
+.coverage-table tr.estado-baja td,
+.admin-table tr.estado-alerta td,
+.admin-table tr.estado-baja td {
+  background: transparent;
+}
+
+.coverage-table tr.estado-alerta td:first-child,
+.coverage-table tr.estado-baja td:first-child,
+.admin-table tr.estado-alerta td:first-child,
+.admin-table tr.estado-baja td:first-child {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.coverage-table tr.estado-baja td:first-child,
+.admin-table tr.estado-baja td:first-child {
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.status-cell { white-space: nowrap; }
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font: 500 9px/1.3 var(--mono);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.status-pill::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.status-pill.status-ok {
+  color: var(--green);
+  background: #edf5ed;
+}
+
+.status-pill.estado-alerta {
+  color: #8a5a00;
+  background: #fbf1dc;
+}
+
+.status-pill.estado-baja {
+  color: var(--red);
+  background: #f7e1dc;
+}
+
+/* Estados vacíos accionables. */
+.table-empty {
+  padding: 20px 12px !important;
+  color: var(--muted);
+  font: 400 11px/1.5 var(--sans) !important;
+  text-align: center;
+}
+
+.table-empty .btn-text {
+  display: inline-block;
+  margin-left: 8px;
+}
+
+/* Modales: mismo lenguaje, footer fijo y foco visible. */
+.profile-dialog,
+.admin-modal {
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+
+.equipo-dialog .profile-actions,
+.admin-modal .inventory-form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 16px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.equipo-dialog .profile-actions {
+  justify-content: flex-end;
+}
+
+.equipo-dialog .profile-actions .btn-primary {
+  min-height: 36px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .filter-bar { align-items: stretch; }
+  .filter-bar .coverage-search,
+  .filter-bar .month-input { flex: 1 1 100%; width: 100%; }
+  .filter-clear { margin-left: 0; }
+  .filter-count { width: 100%; }
+  .coverage-scroll,
+  .inventory-scroll { max-height: 55vh; }
+  .coverage-table td,
+  .inventory-table td { height: auto; padding-top: 10px; padding-bottom: 10px; }
+}
+
+[aria-busy="true"] {
+  cursor: progress;
+}

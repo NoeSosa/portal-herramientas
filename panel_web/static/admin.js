@@ -196,6 +196,7 @@ function conectarEventos() {
     abrirModalInventario();
   });
   $("inv-export").addEventListener("click", exportarInventario);
+  $("inv-clear").addEventListener("click", limpiarFiltrosAdmin);
   let timerUbicacion = null;
   $("inv-ubicacion").addEventListener("input", (e) => {
     clearTimeout(timerUbicacion);
@@ -789,6 +790,7 @@ async function cargarEquipos() {
     limite: A.invLimit,
     offset: A.invOffset,
   });
+  $("inv-table-body").setAttribute("aria-busy", "true");
   try {
     const d = await api(`/api/admin/equipos?${params}`);
     A.invTotal = d.total;
@@ -798,8 +800,11 @@ async function cargarEquipos() {
     $("inv-prev").disabled = A.invOffset <= 0;
     $("inv-next").disabled = A.invOffset + A.invLimit >= d.total;
     pintarEquipos(d.equipos || []);
+    actualizarChipsAdmin();
   } catch (error) {
     set("inv-status", error.message);
+  } finally {
+    $("inv-table-body").removeAttribute("aria-busy");
   }
 }
 
@@ -808,8 +813,26 @@ function pintarEquipos(equipos) {
   body.textContent = "";
   if (!equipos.length) {
     const tr = el("tr");
-    const td = el("td", "admin-empty", "Sin seriales todavía. Importa el Excel o da de alta uno.");
+    const td = el("td", "admin-empty table-empty");
     td.colSpan = 10;
+    const texto = el(
+      "span", "",
+      hayFiltrosAdmin()
+        ? "No hay seriales con estos filtros."
+        : "Sin seriales todavía. Importa el Excel o da de alta uno.",
+    );
+    td.appendChild(texto);
+    const accion = el(
+      "button",
+      "btn-text",
+      hayFiltrosAdmin() ? "Limpiar filtros" : "Agregar nuevo",
+    );
+    accion.type = "button";
+    accion.addEventListener(
+      "click",
+      hayFiltrosAdmin() ? limpiarFiltrosAdmin : () => $("inv-add").click(),
+    );
+    td.appendChild(accion);
     tr.appendChild(td);
     body.appendChild(tr);
     return;
@@ -830,7 +853,7 @@ function pintarEquipos(equipos) {
       el("td", "", e.sn), el("td", "", e.marca || "—"),
       el("td", "", e.modelo || "—"), el("td", "", e.sede || "—"),
       el("td", "", e.zona || "—"), el("td", "", e.ubicacion || "—"),
-      el("td", "", e.piso || "—"), el("td", "", e.estatus || "—"),
+      el("td", "", e.piso || "—"), celdaEstatusAdmin(e.estatus),
       el("td", "", (e.origen_hoja || "—").slice(0, 36)), acciones,
     );
     body.appendChild(tr);
@@ -842,6 +865,87 @@ function claseEstatusAdmin(estatus) {
   if (!e || e.includes("operacion")) return "";
   if (e.includes("baja") || e.includes("danad") || e.includes("dana")) return "estado-baja";
   return "estado-alerta";
+}
+
+function celdaEstatusAdmin(estatus) {
+  const td = el("td", "status-cell");
+  const pill = el("span", "status-pill " + (claseEstatusAdmin(estatus) || "status-ok"));
+  pill.textContent = estatus || "Sin estatus";
+  td.appendChild(pill);
+  return td;
+}
+
+function hayFiltrosAdmin() {
+  return !!(
+    $("inv-q").value.trim() ||
+    $("inv-sede-filter").value ||
+    $("inv-marca-filter").value ||
+    $("inv-estatus-filter").value ||
+    $("inv-piso-filter").value
+  );
+}
+
+function pintarChipsAdmin() {
+  const contenedor = $("inv-filtros-activos");
+  contenedor.textContent = "";
+  const filtros = [];
+  const q = $("inv-q").value.trim();
+  if (q) {
+    filtros.push({
+      label: `Buscar: ${q}`,
+      quitar: () => {
+        $("inv-q").value = "";
+        A.invOffset = 0;
+        cargarEquipos();
+      },
+    });
+  }
+  const pares = [
+    ["inv-sede-filter", "Sede"],
+    ["inv-marca-filter", "Marca"],
+    ["inv-estatus-filter", "Estatus"],
+    ["inv-piso-filter", "Piso"],
+  ];
+  for (const [id, etiqueta] of pares) {
+    const select = $(id);
+    if (!select.value) continue;
+    const texto = select.options[select.selectedIndex]?.textContent || select.value;
+    filtros.push({
+      label: `${etiqueta}: ${texto}`,
+      quitar: () => {
+        select.value = "";
+        A.invOffset = 0;
+        cargarEquipos();
+      },
+    });
+  }
+  $("inv-clear").hidden = filtros.length === 0;
+  $("inv-filtros-count").textContent = filtros.length
+    ? `${filtros.length} filtro${filtros.length === 1 ? "" : "s"}`
+    : "";
+  for (const filtro of filtros) {
+    const chip = el("span", "filter-chip");
+    const texto = el("span", "", filtro.label);
+    const quitar = el("button", "", "×");
+    quitar.type = "button";
+    quitar.setAttribute("aria-label", `Quitar ${filtro.label}`);
+    quitar.addEventListener("click", filtro.quitar);
+    chip.append(texto, quitar);
+    contenedor.appendChild(chip);
+  }
+}
+
+function actualizarChipsAdmin() {
+  pintarChipsAdmin();
+}
+
+function limpiarFiltrosAdmin() {
+  $("inv-q").value = "";
+  for (const id of ["inv-sede-filter", "inv-marca-filter", "inv-estatus-filter", "inv-piso-filter"]) {
+    $(id).value = "";
+  }
+  A.invOffset = 0;
+  cargarEquipos();
 }
 
 function editarEquipo(e) {
