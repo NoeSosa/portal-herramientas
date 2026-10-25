@@ -49,3 +49,6 @@ backend/separador/
 # El taller ya está versionado; esta regla solo evita añadir archivos NUEVOS
 # por accidente. No saca del repositorio lo que ya está rastreado.
 separador_pdfs/
+
+# Herramientas externas instaladas localmente (skills CLI, etc.)
+.tools/
