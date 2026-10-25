@@ -176,6 +176,42 @@ function setEqStatus(texto) {
   nodo.className = "form-status" + (texto ? " error" : "");
 }
 
+function pintarSugerenciasUsuario(datos, q) {
+  const contenedor = $("eq-ubicacion-sugerencias");
+  const aviso = $("eq-ubicacion-aviso");
+  contenedor.textContent = "";
+  const existentes = datos.ubicaciones || [];
+  const exacta = existentes.some((n) => n.trim().toLowerCase() === q.trim().toLowerCase());
+  if (!q.trim()) {
+    aviso.textContent = existentes.length
+      ? "Elige una existente o escribe una nueva."
+      : "Aún no hay ubicaciones en el inventario.";
+    return;
+  }
+  if (exacta) {
+    aviso.textContent = "Ya existe; se usará esa ubicación.";
+    return;
+  }
+  const similares = datos.similares || [];
+  if (!similares.length) {
+    aviso.textContent = "No hay parecidas; se guardará como nueva.";
+    return;
+  }
+  aviso.textContent = "Hay ubicaciones parecidas. Elige una o confirma la nueva.";
+  for (const nombre of similares.slice(0, 5)) {
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.className = "location-chip";
+    boton.textContent = nombre;
+    boton.addEventListener("click", () => {
+      $("eq-ubicacion").value = nombre;
+      contenedor.textContent = "";
+      aviso.textContent = "Usando una ubicación existente.";
+    });
+    contenedor.appendChild(boton);
+  }
+}
+
 async function cargarUbicacionesUsuario(q = "") {
   try {
     const d = await api(`/api/ubicaciones?q=${encodeURIComponent(q)}`);
@@ -186,9 +222,40 @@ async function cargarUbicacionesUsuario(q = "") {
       option.value = nombre;
       lista.appendChild(option);
     }
+    pintarSugerenciasUsuario(d, q);
   } catch {
     // La sugerencia es auxiliar; no bloquea el formulario.
   }
+}
+
+async function confirmarUbicacionUsuario() {
+  const q = $("eq-ubicacion").value.trim();
+  if (!q) return {confirmar: false};
+  const d = await api(`/api/ubicaciones?q=${encodeURIComponent(q)}`);
+  const exacta = (d.ubicaciones || []).some(
+    (n) => n.trim().toLowerCase() === q.toLowerCase(),
+  );
+  const similares = d.similares || [];
+  if (exacta || !similares.length) return {confirmar: false};
+
+  let piso = $("eq-piso").value.trim();
+  if (!piso) {
+    piso = window.prompt(
+      `La ubicación "${q}" se parece a: ${similares.slice(0, 5).join(", ")}.\n` +
+      "¿Qué piso le corresponde? (Se guardará como ubicación nueva.)",
+      "",
+    );
+    if (piso === null) return null;
+    piso = piso.trim();
+    if (!piso) return null;
+    $("eq-piso").value = piso;
+  }
+  const seguro = window.confirm(
+    `Ya existen ubicaciones parecidas:\n\n${similares.slice(0, 5).join("\n")}\n\n` +
+    `¿Crear de todos modos "${q}" con piso "${piso}"?`,
+  );
+  if (!seguro) return null;
+  return {confirmar: true, piso};
 }
 
 function cargarEstatusSugeridos() {
@@ -256,6 +323,12 @@ async function guardarEquipoUsuario(evento) {
     return;
   }
   try {
+    const confirmacion = await confirmarUbicacionUsuario();
+    if (confirmacion === null) return;
+    if (confirmacion.confirmar) {
+      datos.confirmar_ubicacion = true;
+      datos.piso = confirmacion.piso;
+    }
     const d = await api("/api/equipos", {
       method: "POST",
       headers: {"Content-Type": "application/json"},

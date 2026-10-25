@@ -27,6 +27,7 @@ class EquipoEntrada(BaseModel):
     contador_inicial: Texto | None = None
     sustituto_sn: Texto | None = None
     origen_hoja: Texto | None = None
+    confirmar_ubicacion: bool = False
 
 
 class BorradoEquiposEntrada(BaseModel):

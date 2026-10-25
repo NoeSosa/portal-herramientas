@@ -856,6 +856,12 @@ async function guardarEquipo(evento) {
     return;
   }
   try {
+    const confirmacion = await confirmarUbicacionNueva();
+    if (confirmacion === null) return;
+    if (confirmacion.confirmar) {
+      datos.confirmar_ubicacion = true;
+      datos.piso = confirmacion.piso;
+    }
     const d = await api("/api/admin/equipos", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -989,6 +995,41 @@ async function cargarSedes() {
   }
 }
 
+function pintarSugerenciasUbicacion(contenedor, aviso, input, datos, q) {
+  contenedor.textContent = "";
+  const existentes = datos.ubicaciones || [];
+  const exacta = existentes.some((n) => n.trim().toLowerCase() === q.trim().toLowerCase());
+  if (!q.trim()) {
+    aviso.textContent = existentes.length
+      ? "Elige una ubicación existente o escribe una nueva."
+      : "Todavía no hay ubicaciones; esta será la primera.";
+    return;
+  }
+  if (exacta) {
+    aviso.textContent = "Esta ubicación ya existe; se usará tal cual.";
+    return;
+  }
+  const similares = datos.similares || [];
+  if (!similares.length) {
+    aviso.textContent = "No hay ubicaciones parecidas; se guardará como nueva.";
+    return;
+  }
+  aviso.textContent = "Ya existen ubicaciones parecidas. Elige una o confirma la nueva.";
+  for (const nombre of similares.slice(0, 5)) {
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.className = "location-chip";
+    boton.textContent = nombre;
+    boton.title = `Usar ${nombre}`;
+    boton.addEventListener("click", () => {
+      input.value = nombre;
+      contenedor.textContent = "";
+      aviso.textContent = "Usando una ubicación existente.";
+    });
+    contenedor.appendChild(boton);
+  }
+}
+
 async function cargarUbicaciones(q) {
   try {
     const d = await api(`/api/admin/ubicaciones?q=${encodeURIComponent(q || "")}`);
@@ -999,13 +1040,47 @@ async function cargarUbicaciones(q) {
       option.value = nombre;
       lista.appendChild(option);
     }
-    const n = (d.ubicaciones || []).length;
-    set("inv-ubicacion-hint", n
-      ? `${n} ubicación(es) registrada(s). Elige una para no duplicar.`
-      : "No hay coincidencias; al guardar se crea una ubicación nueva.");
+    pintarSugerenciasUbicacion(
+      $("inv-ubicacion-sugerencias"),
+      $("inv-ubicacion-aviso"),
+      $("inv-ubicacion"),
+      d,
+      q || "",
+    );
   } catch (error) {
-    set("inv-ubicacion-hint", error.message);
+    set("inv-ubicacion-aviso", error.message);
   }
+}
+
+async function confirmarUbicacionNueva() {
+  const input = $("inv-ubicacion");
+  const q = input.value.trim();
+  if (!q) return {confirmar: false};
+  const d = await api(`/api/admin/ubicaciones?q=${encodeURIComponent(q)}`);
+  const exacta = (d.ubicaciones || []).some(
+    (n) => n.trim().toLowerCase() === q.toLowerCase(),
+  );
+  const similares = d.similares || [];
+  if (exacta || !similares.length) return {confirmar: false};
+
+  let piso = $("inv-piso").value.trim();
+  if (!piso) {
+    piso = window.prompt(
+      `La ubicación "${q}" se parece a: ${similares.slice(0, 5).join(", ")}.\n` +
+      "¿Qué piso le corresponde? (Se guardará como ubicación nueva.)",
+      "",
+    );
+    if (piso === null) return null;
+    piso = piso.trim();
+    if (!piso) return null;
+    $("inv-piso").value = piso;
+  }
+  const seguro = window.confirm(
+    `Ya existen ubicaciones parecidas:\n\n${similares.slice(0, 5).join("\n")}\n\n` +
+    `¿Crear de todos modos "${q}" con piso "${piso}"?`,
+  );
+  if (!seguro) return null;
+  return {confirmar: true, piso};
 }
 
 async function cargarUsuarios() {

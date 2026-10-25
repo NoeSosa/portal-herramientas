@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from panel_web.app import db  # noqa: E402
-from panel_web.app.normalizacion import normalizar_ubicacion  # noqa: E402
 
 
 class AislamientoTest(unittest.TestCase):
@@ -145,14 +144,24 @@ class CoberturaTest(unittest.TestCase):
         db.finalizar_job(self.con, job_id, f"/tmp/{job_id}.zip", 1)
         db.registrar_cobertura_job(self.con, job_id)
 
-    def test_ubicacion_y_serial_no_duplican_variantes(self) -> None:
+    def test_ubicaciones_no_se_fusionan_solas(self) -> None:
+        db.upsert_equipo(self.con, "AAA111", sede="Reynosa",
+                         ubicacion="Segundos Penal")
+        db.upsert_equipo(self.con, "BBB222", sede="Reynosa",
+                         ubicacion="2 penal")
+        self.assertEqual(db.contar_equipos(self.con), 2)
+        ubicaciones = {f["ubicacion"] for f in db.listar_equipos(self.con)}
+        self.assertEqual(ubicaciones, {"Segundos Penal", "2 penal"})
+        self.assertIn("2 penal", db.ubicaciones_similares(self.con, "Segundos Penal"))
+
+    def test_serial_variantes_si_se_consolidan(self) -> None:
         db.upsert_equipo(self.con, "Mx3cv6Q0DZ", sede="Reynosa",
                          ubicacion="Segundos Penal")
         db.upsert_equipo(self.con, "MX3CV6QODZ", sede="Reynosa",
                          ubicacion="Juzgado Segundo en Materia Penal")
         self.assertEqual(db.contar_equipos(self.con), 1)
         fila = db.listar_equipos(self.con)[0]
-        self.assertEqual(normalizar_ubicacion(fila["ubicacion"]), "2 penal")
+        self.assertEqual(fila["ubicacion"], "Juzgado Segundo en Materia Penal")
 
     def test_faltantes_y_cobertura(self) -> None:
         db.upsert_equipo(self.con, "AAA111", sede="Reynosa", marca="HP")

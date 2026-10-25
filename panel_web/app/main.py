@@ -362,6 +362,33 @@ def _conexion():
     return db.conectar(settings.db_path)
 
 
+def _validar_ubicacion_nueva(con, datos: dict[str, Any]) -> None:
+    """Frena ubicaciones nuevas parecidas y obliga a confirmar y dar piso.
+
+    No normaliza ni fusiona: solo compara contra las ubicaciones que ya existen.
+    """
+    nombre = re.sub(r"\s+", " ", str(datos.get("ubicacion") or "")).strip()
+    if not nombre:
+        return
+    similares = db.ubicaciones_similares(con, nombre)
+    if not similares:
+        return
+    if not datos.get("confirmar_ubicacion"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Ya existe una ubicación parecida: "
+                + ", ".join(similares[:5])
+                + ". Elige una existente o confirma que deseas crear una nueva."
+            ),
+        )
+    if not str(datos.get("piso") or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Para crear una ubicación nueva, indica el piso.",
+        )
+
+
 # --------------------------------------------------------------------------
 # API
 # --------------------------------------------------------------------------
@@ -449,7 +476,10 @@ async def ubicaciones_usuario(
 ) -> dict[str, Any]:
     con = _conexion()
     try:
-        return {"ubicaciones": db.sugerencias_ubicacion(con, q)}
+        return {
+            "ubicaciones": db.sugerencias_ubicacion(con, q),
+            "similares": db.ubicaciones_similares(con, q),
+        }
     finally:
         con.close()
 
@@ -491,6 +521,7 @@ async def guardar_equipo_usuario(
         permitidos = {c: datos.get(c, "") for c in db.CAMPOS_EQUIPO if c in datos}
         if not (permitidos.get("sede") or "").strip() and permitidos.get("domicilio"):
             permitidos["sede"] = permitidos["domicilio"]
+        _validar_ubicacion_nueva(con, datos)
         creado, sn = db.upsert_equipo(con, sn, **permitidos)
         ok, detalle, _ = _exportar_inventario(con)
         db.auditar(
@@ -1111,6 +1142,7 @@ async def admin_guardar_equipo(
         # SEDE vacía se deriva del domicilio, igual que el pipeline local.
         if not (permitidos.get("sede") or "").strip() and permitidos.get("domicilio"):
             permitidos["sede"] = permitidos["domicilio"]
+        _validar_ubicacion_nueva(con, datos)
         creado, sn = db.upsert_equipo(con, sn, **permitidos)
         ok, detalle, _ = _exportar_inventario(con)
         db.auditar(
@@ -1281,7 +1313,10 @@ async def admin_ubicaciones(
 ) -> dict[str, Any]:
     con = _conexion()
     try:
-        return {"ubicaciones": db.sugerencias_ubicacion(con, q)}
+        return {
+            "ubicaciones": db.sugerencias_ubicacion(con, q),
+            "similares": db.ubicaciones_similares(con, q),
+        }
     finally:
         con.close()
 

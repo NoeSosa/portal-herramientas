@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025h">
+  <link rel="stylesheet" href="/static/style.css?v=20261025i">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -276,6 +276,8 @@
         <label>Ubicación
           <input id="eq-ubicacion" list="eq-ubicaciones" autocomplete="off" maxlength="300">
           <datalist id="eq-ubicaciones"></datalist>
+          <span class="location-hint" id="eq-ubicacion-aviso"></span>
+          <div class="location-suggestions" id="eq-ubicacion-sugerencias"></div>
         </label>
         <label>Piso<input id="eq-piso" maxlength="80"></label>
         <label>Estatus<input id="eq-estatus" list="eq-estatus-lista" maxlength="120"></label>
@@ -343,6 +345,6 @@
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261025h" defer></script>
+  <script src="/static/app.js?v=20261025i" defer></script>
 </body>
 </html>

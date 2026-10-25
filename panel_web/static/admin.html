@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025h">
-  <link rel="stylesheet" href="/static/admin.css?v=20261025h">
+  <link rel="stylesheet" href="/static/style.css?v=20261025i">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025i">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -215,6 +215,8 @@
         <label>Ubicación del equipo
           <input id="inv-ubicacion" name="ubicacion" list="inv-ubicaciones" autocomplete="off">
           <datalist id="inv-ubicaciones"></datalist>
+          <span class="location-hint" id="inv-ubicacion-aviso"></span>
+          <div class="location-suggestions" id="inv-ubicacion-sugerencias"></div>
         </label>
         <label>Piso<input id="inv-piso" name="piso" placeholder="editable después"></label>
         <label>Estatus<input id="inv-estatus" name="estatus"></label>
@@ -295,6 +297,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261025h" defer></script>
+  <script src="/static/admin.js?v=20261025i" defer></script>
 </body>
 </html>

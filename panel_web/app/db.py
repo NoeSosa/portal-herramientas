@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -133,12 +134,6 @@ CREATE TABLE IF NOT EXISTS sedes (
 
 -- Ubicaciones canónicas: evita "2 penal", "Segundos Penal" y
 -- "Juzgado Segundo en Materia Penal" como tres ubicaciones distintas.
-CREATE TABLE IF NOT EXISTS ubicaciones (
-    normalizado TEXT PRIMARY KEY,
-    nombre      TEXT NOT NULL,
-    actualizado_en TEXT NOT NULL
-);
-
 -- Cobertura mensual por sede/serial. Persiste aunque el job se borre por
 -- retención; `excluido` permite corregir un escaneo sin borrar archivos.
 CREATE TABLE IF NOT EXISTS cobertura_escaneos (
@@ -205,57 +200,12 @@ def _migrar_usuarios(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
 
 
-def _reconstruir_ubicaciones(con: sqlite3.Connection) -> None:
-    """Canoniza ubicaciones existentes y deja el índice de sugerencias."""
-    canon: dict[str, str] = {
-        fila["normalizado"]: fila["nombre"]
-        for fila in con.execute("SELECT normalizado, nombre FROM ubicaciones")
-    }
-    filas = con.execute(
-        "SELECT ubicacion FROM equipos"
-        " WHERE ubicacion IS NOT NULL AND ubicacion<>''"
-    ).fetchall()
-    grupos: dict[str, list[str]] = {}
-    for fila in filas:
-        nombre = fila["ubicacion"].strip()
-        clave = normalizar_ubicacion(nombre)
-        if clave:
-            grupos.setdefault(clave, []).append(nombre)
-    for clave, nombres in grupos.items():
-        # El nombre canónico es el más corto: "2 penal" gana a
-        # "Segundos Penal" y a "Juzgado Segundo en Materia Penal".
-        nombre = min(nombres, key=lambda n: (len(n), n))
-        if clave in canon and len(canon[clave]) <= len(nombre):
-            nombre = canon[clave]
-        canon[clave] = nombre
-        con.execute(
-            "INSERT INTO ubicaciones(normalizado, nombre, actualizado_en)"
-            " VALUES(?,?,datetime('now'))"
-            " ON CONFLICT(normalizado) DO UPDATE SET nombre=excluded.nombre,"
-            " actualizado_en=excluded.actualizado_en",
-            (clave, nombre),
-        )
-        for variante in set(nombres):
-            con.execute(
-                "UPDATE equipos SET ubicacion=?, ubicacion_norm=?"
-                " WHERE ubicacion=?",
-                (nombre, clave, variante),
-            )
-    # Seriales: rellenar clave normalizada sin cambiar el serial visible.
-    for fila in con.execute("SELECT sn FROM equipos").fetchall():
-        con.execute(
-            "UPDATE equipos SET sn_norm=? WHERE sn=?",
-            (normalizar_serial(fila["sn"]), fila["sn"]),
-        )
-
-
 def inicializar(ruta: Path) -> None:
     con = conectar(ruta)
     try:
         con.executescript(ESQUEMA)
         _migrar_equipos(con)
         _migrar_usuarios(con)
-        _reconstruir_ubicaciones(con)
         con.commit()
     finally:
         con.close()
@@ -841,49 +791,59 @@ CAMPOS_EQUIPO = ("marca", "modelo", "tipo", "sede", "zona", "domicilio",
                  "origen_hoja")
 
 
-def canonicalizar_ubicacion(con: sqlite3.Connection, ubicacion: str) -> str:
+def _ubicaciones_existentes(con: sqlite3.Connection) -> list[str]:
+    filas = con.execute(
+        "SELECT DISTINCT ubicacion FROM equipos"
+        " WHERE ubicacion IS NOT NULL AND ubicacion<>''"
+        " ORDER BY ubicacion COLLATE NOCASE"
+    ).fetchall()
+    return [f["ubicacion"] for f in filas]
+
+
+def _parecido_ubicacion(texto: str, existente: str) -> float:
+    a = normalizar_ubicacion(texto)
+    b = normalizar_ubicacion(existente)
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    ratio = SequenceMatcher(None, a, b).ratio()
+    tokens_a, tokens_b = set(a.split()), set(b.split())
+    if tokens_a and tokens_b:
+        ratio = max(ratio, len(tokens_a & tokens_b) / len(tokens_a | tokens_b))
+    return ratio
+
+
+def ubicaciones_similares(
+    con: sqlite3.Connection, ubicacion: str, umbral: float = 0.55
+) -> list[str]:
+    """Sugerencias cercanas; no se usan para fusionar ni guardar nada."""
     nombre = re.sub(r"\s+", " ", str(ubicacion or "")).strip()
     if not nombre:
-        return ""
-    clave = normalizar_ubicacion(nombre)
-    fila = con.execute(
-        "SELECT nombre FROM ubicaciones WHERE normalizado=?", (clave,)
-    ).fetchone()
-    if fila:
-        if len(nombre) < len(fila["nombre"]):
-            con.execute(
-                "UPDATE ubicaciones SET nombre=?, actualizado_en=datetime('now')"
-                " WHERE normalizado=?", (nombre, clave),
-            )
-            con.execute(
-                "UPDATE equipos SET ubicacion=? WHERE ubicacion_norm=?",
-                (nombre, clave),
-            )
-            return nombre
-        return fila["nombre"]
-    con.execute(
-        "INSERT OR IGNORE INTO ubicaciones(normalizado, nombre, actualizado_en)"
-        " VALUES(?,?,datetime('now'))",
-        (clave, nombre),
-    )
-    return nombre
+        return []
+    out = []
+    for existente in _ubicaciones_existentes(con):
+        if existente.strip().casefold() == nombre.casefold():
+            continue
+        if _parecido_ubicacion(nombre, existente) >= umbral:
+            out.append(existente)
+    return out[:8]
 
 
 def sugerencias_ubicacion(con: sqlite3.Connection, q: str = "") -> list[str]:
     q = (q or "").strip()
-    filas = con.execute(
-        "SELECT nombre FROM ubicaciones ORDER BY nombre"
-    ).fetchall()
+    existentes = _ubicaciones_existentes(con)
     if not q:
-        return [f["nombre"] for f in filas[:30]]
-    clave = normalizar_ubicacion(q)
-    qlow = q.lower()
-    out = []
-    for f in filas:
-        nombre = f["nombre"]
-        if qlow in nombre.lower() or (clave and clave in normalizar_ubicacion(nombre)):
-            out.append(nombre)
-    return out[:30]
+        return existentes[:30]
+    qlow = q.casefold()
+    exactas = [n for n in existentes if n.strip().casefold() == qlow]
+    cercanas = sorted(
+        (n for n in existentes if n.strip().casefold() != qlow),
+        key=lambda n: _parecido_ubicacion(q, n),
+        reverse=True,
+    )
+    cercanas = [n for n in cercanas if _parecido_ubicacion(q, n) >= 0.45]
+    return (exactas + cercanas)[:30]
 
 
 def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool, str]:
@@ -899,7 +859,7 @@ def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool
         sn = existente["sn"]
     existia = con.execute("SELECT 1 FROM equipos WHERE sn=?", (sn,)).fetchone() is not None
     if "ubicacion" in campos:
-        campos["ubicacion"] = canonicalizar_ubicacion(con, campos["ubicacion"])
+        campos["ubicacion"] = re.sub(r"\s+", " ", str(campos["ubicacion"] or "")).strip()
     cols = ["sn", "sn_norm", "ubicacion_norm"] + [c for c in CAMPOS_EQUIPO if c in campos]
     vals = [sn, sn, normalizar_ubicacion(campos.get("ubicacion", ""))]
     vals += [("" if campos.get(c) is None else str(campos.get(c))) for c in cols[3:]]

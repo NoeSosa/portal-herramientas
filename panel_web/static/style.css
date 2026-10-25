@@ -1495,3 +1495,33 @@ h1 {
 @media (max-width: 700px) {
   .equipo-form-grid { grid-template-columns: 1fr; }
 }
+
+.location-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font: 400 9px/1.4 var(--sans);
+}
+
+.location-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.location-chip {
+  max-width: 100%;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--navy);
+  font: 400 9px/1.3 var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.location-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
