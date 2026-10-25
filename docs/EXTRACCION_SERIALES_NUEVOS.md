@@ -62,6 +62,25 @@ Si esos seriales están en el inventario, los mismos 5 documentos salen en
 - Regresión manual con el OCR real de `Nuevas_2.pdf`: 5 grupos, 15 descartes,
   0 `Sin_Identificar`.
 
+## Diagnóstico de una corrida anterior
+
+Si una corrida genera `Sin_Identificar_pag13` y `Sin_Identificar_pag14` para
+este mismo PDF:
+
+- La página 13 es la hoja de uso de `MX3CV6Q0DZ`; sí tiene serial visible.
+- La página 14 es la continuación "Página 2"; **no trae serial propio**, depende
+  de que la página 13 lo haya reconocido.
+- El nombre `Sin_Identificar_pag13__DESCON__...` corresponde al formato del
+  motor anterior, no al actual.
+- La causa típica es que el OCR de la página 13 leyó la etiqueta como
+  `Numero de serie dei producto` o `Numero de_serie`, y el patrón anterior solo
+  aceptaba `Número de serie del producto` exacto.
+- Las páginas 17 y 21 sí pasaron porque su etiqueta OCR coincidió con el patrón
+  anterior; no es que esas hojas sean distintas en calidad.
+
+Con el motor actual, las páginas 13–14 forman un solo documento
+`MX3CV6Q0DZ` y no aparece `Sin_Identificar_pag13/14`.
+
 ## Límites
 
 - El fallback genérico exige al menos 2 dígitos para no confundir palabras.
