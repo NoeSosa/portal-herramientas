@@ -908,7 +908,7 @@ def borrar_equipos(con: sqlite3.Connection, **filtros) -> int:
     return int(cur.rowcount or 0)
 
 
-def _filtros_equipos(q=None, sede=None, marca=None, estatus=None, zona=None):
+def _filtros_equipos(q=None, sede=None, marca=None, estatus=None, zona=None, piso=None):
     where, params = [], []
     if q:
         where.append(
@@ -917,7 +917,7 @@ def _filtros_equipos(q=None, sede=None, marca=None, estatus=None, zona=None):
         )
         params += [f"%{q}%"] * 6
     for campo, valor in (("sede", sede), ("marca", marca),
-                         ("estatus", estatus), ("zona", zona)):
+                         ("estatus", estatus), ("zona", zona), ("piso", piso)):
         if valor:
             where.append(f"{campo}=?")
             params.append(valor)
@@ -948,7 +948,7 @@ def listar_equipos(
 
 
 def valores_equipos(con: sqlite3.Connection, columna: str) -> list[str]:
-    columna = columna if columna in ("sede", "marca", "estatus", "zona") else "sede"
+    columna = columna if columna in ("sede", "marca", "estatus", "zona", "piso") else "sede"
     filas = con.execute(
         f"SELECT DISTINCT {columna} AS v FROM equipos"
         f" WHERE {columna} IS NOT NULL AND {columna}<>'' ORDER BY {columna}"

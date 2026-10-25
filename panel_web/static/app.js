@@ -737,10 +737,35 @@ function renderCobertura() {
   const escaneados = sedes.flatMap((s) =>
     (s.detalle_escaneos || []).map((e) => ({ ...e, sede: s.sede })));
   const q = ($("cov-buscar")?.value || "").trim().toLowerCase();
-  const filtro = (fila) => !q || [
-    fila.sn, fila.marca, fila.modelo, fila.ubicacion, fila.piso, fila.estatus,
-    fila.usuario, fila.documento, fila.sede,
-  ].filter(Boolean).join(" ").toLowerCase().includes(q);
+  const fEstado = $("cov-filtro-estado").value;
+  const fEstatus = $("cov-filtro-estatus").value;
+  const fMarca = $("cov-filtro-marca").value;
+  const fPiso = $("cov-filtro-piso").value;
+  const filtro = (fila) => {
+    if (q && ![
+      fila.sn, fila.marca, fila.modelo, fila.ubicacion, fila.piso, fila.estatus,
+      fila.usuario, fila.documento, fila.sede,
+    ].filter(Boolean).join(" ").toLowerCase().includes(q)) return false;
+    if (fEstatus && fila.estatus !== fEstatus) return false;
+    if (fMarca && fila.marca !== fMarca) return false;
+    if (fPiso && fila.piso !== fPiso) return false;
+    if (fEstado === "faltante" && fila.escaneado) return false;
+    if (fEstado === "escaneado" && !fila.escaneado) return false;
+    return true;
+  };
+
+  const unicos = (campo) => [...new Set(equipos.map((e) => e[campo]).filter(Boolean))].sort();
+  const opciones = (id, valores, etiqueta) => {
+    const select = $(id);
+    const previo = select.value;
+    select.textContent = "";
+    select.appendChild(new Option(etiqueta, ""));
+    for (const valor of valores) select.appendChild(new Option(valor, valor));
+    if ([...select.options].some((o) => o.value === previo)) select.value = previo;
+  };
+  opciones("cov-filtro-estatus", unicos("estatus"), "todos los estatus");
+  opciones("cov-filtro-marca", unicos("marca"), "todas las marcas");
+  opciones("cov-filtro-piso", unicos("piso"), "todos los pisos");
 
   $("cov-esperados").textContent = datos.esperados ?? 0;
   $("cov-escaneados").textContent = datos.escaneados ?? 0;
@@ -789,7 +814,9 @@ function renderCobertura() {
   const cuerpoE = $("cov-escaneados-body");
   cuerpoE.textContent = "";
   const visiblesE = escaneados
-    .filter(filtro)
+    .filter((fila) => !q || [
+      fila.sn, fila.usuario, fila.documento, fila.sede,
+    ].filter(Boolean).join(" ").toLowerCase().includes(q))
     .sort((a, b) => Number(b.duplicado) - Number(a.duplicado));
   if (!visiblesE.length) {
     const tr = document.createElement("tr");
@@ -860,8 +887,12 @@ async function iniciar() {
   $("cov-periodo").addEventListener("change", () => cargarCobertura(true));
   $("cov-sede").addEventListener("change", () => cargarCobertura(true));
   $("cov-buscar").addEventListener("input", renderCobertura);
+  for (const id of ["cov-filtro-estado", "cov-filtro-estatus", "cov-filtro-marca", "cov-filtro-piso"]) {
+    $(id).addEventListener("change", renderCobertura);
+  }
   $("cov-reset").addEventListener("click", reiniciarCobertura);
   $("cov-add").addEventListener("click", () => abrirEquipoForm(null));
+  $("cov-add-inline").addEventListener("click", () => abrirEquipoForm(null));
   $("eq-cancel").addEventListener("click", () => $("equipo-dialog").close());
   $("equipo-form").addEventListener("submit", guardarEquipoUsuario);
   let timerEqUbicacion = null;

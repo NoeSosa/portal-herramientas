@@ -184,6 +184,11 @@ function conectarEventos() {
     if (e.target.files && e.target.files[0]) subirExcel(e.target.files[0]);
   });
   $("inv-import").addEventListener("click", () => $("inv-file").click());
+  $("inv-add").addEventListener("click", () => {
+    limpiarFormulario();
+    $("inv-sn").focus();
+    $("inv-form").scrollIntoView({behavior: "smooth", block: "center"});
+  });
   $("inv-export").addEventListener("click", exportarInventario);
   let timerUbicacion = null;
   $("inv-ubicacion").addEventListener("input", (e) => {
@@ -207,7 +212,7 @@ function conectarEventos() {
       cargarEquipos();
     }, 250);
   });
-  for (const id of ["inv-sede-filter", "inv-marca-filter", "inv-estatus-filter"]) {
+  for (const id of ["inv-sede-filter", "inv-marca-filter", "inv-estatus-filter", "inv-piso-filter"]) {
     $(id).addEventListener("change", () => {
       A.invOffset = 0;
       cargarEquipos();
@@ -751,6 +756,7 @@ async function cargarInventario() {
     rellenarFiltros("inv-sede-filter", d.sedes.map((s) => s.sede), "todas las sedes");
     rellenarFiltros("inv-marca-filter", d.marcas || [], "todas las marcas");
     rellenarFiltros("inv-estatus-filter", d.estatus || [], "todos los estatus");
+    rellenarFiltros("inv-piso-filter", d.pisos || [], "todos los pisos");
     A.invOffset = 0;
     await cargarEquipos();
   } catch (error) {
@@ -773,6 +779,7 @@ async function cargarEquipos() {
     sede: $("inv-sede-filter").value || "",
     marca: $("inv-marca-filter").value || "",
     estatus: $("inv-estatus-filter").value || "",
+    piso: $("inv-piso-filter").value || "",
     limite: A.invLimit,
     offset: A.invOffset,
   });
@@ -803,6 +810,8 @@ function pintarEquipos(equipos) {
   }
   for (const e of equipos) {
     const tr = el("tr");
+    const clase = claseEstatusAdmin(e.estatus);
+    if (clase) tr.classList.add(clase);
     const acciones = el("td");
     const editar = el("button", "row-action", "Editar");
     editar.type = "button";
@@ -820,6 +829,13 @@ function pintarEquipos(equipos) {
     );
     body.appendChild(tr);
   }
+}
+
+function claseEstatusAdmin(estatus) {
+  const e = String(estatus || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!e || e.includes("operacion")) return "";
+  if (e.includes("baja") || e.includes("danad") || e.includes("dana")) return "estado-baja";
+  return "estado-alerta";
 }
 
 function editarEquipo(e) {
@@ -926,9 +942,10 @@ async function borrarInventario(todo) {
     sede: $("inv-sede-filter").value,
     marca: $("inv-marca-filter").value,
     estatus: $("inv-estatus-filter").value,
+    piso: $("inv-piso-filter").value,
     zona: "",
   };
-  const hayFiltros = !!(filtros.q || filtros.sede || filtros.marca || filtros.estatus);
+  const hayFiltros = !!(filtros.q || filtros.sede || filtros.marca || filtros.estatus || filtros.piso);
   if (!todo && !hayFiltros) {
     set("inv-delete-status", "Elige al menos un filtro o usa Borrar todo.");
     return;

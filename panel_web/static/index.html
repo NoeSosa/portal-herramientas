@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025j">
+  <link rel="stylesheet" href="/static/style.css?v=20261025k">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -216,10 +216,25 @@
           <div><span class="mono-label">DUPLICADOS</span><strong id="cov-duplicados">—</strong></div>
         </div>
 
+        <div class="coverage-filters">
+          <input id="cov-buscar" class="coverage-search" type="search" placeholder="Buscar serial, ubicación, marca…">
+          <select id="cov-filtro-estado" class="month-input" aria-label="Faltantes o escaneados">
+            <option value="">todos los registros</option>
+            <option value="faltante">solo faltantes</option>
+            <option value="escaneado">solo escaneados</option>
+          </select>
+          <select id="cov-filtro-estatus" class="month-input" aria-label="Estatus"><option value="">todos los estatus</option></select>
+          <select id="cov-filtro-marca" class="month-input" aria-label="Marca"><option value="">todas las marcas</option></select>
+          <select id="cov-filtro-piso" class="month-input" aria-label="Piso"><option value="">todos los pisos</option></select>
+        </div>
+
         <div class="coverage-block">
           <div class="coverage-block-head">
             <span class="mono-label">EQUIPOS DE <span id="cov-sede-nombre">—</span></span>
-            <span class="mono-label" id="cov-faltantes-count">0</span>
+            <div class="coverage-block-tools">
+              <span class="mono-label" id="cov-faltantes-count">0</span>
+              <button class="btn btn-primary" type="button" id="cov-add-inline">Agregar equipo</button>
+            </div>
           </div>
           <div class="table-scroll">
             <table class="admin-table coverage-table">
@@ -232,7 +247,6 @@
         <div class="coverage-block">
           <div class="coverage-block-head">
             <span class="mono-label">ESCANEADOS / DUPLICADOS</span>
-            <input id="cov-buscar" class="coverage-search" type="search" placeholder="Buscar serial, ubicación…">
           </div>
           <div class="table-scroll">
             <table class="admin-table coverage-table">
@@ -345,6 +359,6 @@
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261025j" defer></script>
+  <script src="/static/app.js?v=20261025k" defer></script>
 </body>
 </html>

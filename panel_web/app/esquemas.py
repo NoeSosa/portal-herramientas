@@ -38,3 +38,4 @@ class BorradoEquiposEntrada(BaseModel):
     marca: Texto | None = None
     estatus: Texto | None = None
     zona: Texto | None = None
+    piso: Texto | None = None

@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025j">
-  <link rel="stylesheet" href="/static/admin.css?v=20261025j">
+  <link rel="stylesheet" href="/static/style.css?v=20261025k">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025k">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -195,6 +195,7 @@
           <input type="file" id="inv-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
           <button class="btn btn-primary" type="button" id="inv-import">Importar Excel</button>
           <button class="btn-text" type="button" id="inv-choose">Elegir archivo</button>
+          <button class="btn-text" type="button" id="inv-add">＋ Agregar nuevo</button>
           <span class="mono-label" id="inv-status">—</span>
         </div>
         <p class="inventory-file" id="inv-archivo">Sin inventario exportado.</p>
@@ -236,6 +237,7 @@
         <select id="inv-sede-filter"><option value="">todas las sedes</option></select>
         <select id="inv-marca-filter"><option value="">todas las marcas</option></select>
         <select id="inv-estatus-filter"><option value="">todos los estatus</option></select>
+        <select id="inv-piso-filter"><option value="">todos los pisos</option></select>
       </div>
 
       <div class="inventory-danger">
@@ -297,6 +299,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261025j" defer></script>
+  <script src="/static/admin.js?v=20261025k" defer></script>
 </body>
 </html>

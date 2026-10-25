@@ -1109,13 +1109,15 @@ async def admin_inventario(admin=Depends(admin_actual)) -> dict[str, Any]:
 @app.get("/api/admin/equipos")
 async def admin_equipos(
     q: str = "", sede: str = "", marca: str = "", estatus: str = "",
-    zona: str = "", limite: int = 100, offset: int = 0, orden: str = "sn",
+    zona: str = "", piso: str = "", limite: int = 100, offset: int = 0,
+    orden: str = "sn",
     admin=Depends(admin_actual),
 ) -> dict[str, Any]:
     con = _conexion()
     try:
         filtros = {"q": q or None, "sede": sede or None, "marca": marca or None,
-                   "estatus": estatus or None, "zona": zona or None}
+                   "estatus": estatus or None, "zona": zona or None,
+                   "piso": piso or None}
         return {
             "total": db.contar_equipos(con, **filtros),
             "todos": db.contar_equipos(con),
@@ -1126,6 +1128,7 @@ async def admin_equipos(
                 "sedes": db.valores_equipos(con, "sede"),
                 "marcas": db.valores_equipos(con, "marca"),
                 "estatus": db.valores_equipos(con, "estatus"),
+                "pisos": db.valores_equipos(con, "piso"),
             },
         }
     finally:
@@ -1179,6 +1182,7 @@ async def admin_borrar_equipos(
         "marca": (datos.get("marca") or "").strip() or None,
         "estatus": (datos.get("estatus") or "").strip() or None,
         "zona": (datos.get("zona") or "").strip() or None,
+        "piso": (datos.get("piso") or "").strip() or None,
     }
     con = _conexion()
     try:

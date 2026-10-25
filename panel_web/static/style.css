@@ -1525,3 +1525,29 @@ h1 {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+/* Filtros de cobertura e inventario */
+.coverage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.coverage-filters .coverage-search {
+  flex: 1 1 220px;
+}
+
+.coverage-block-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-table tr.estado-alerta td {
+  background: #fbf1dc;
+}
+
+.admin-table tr.estado-baja td {
+  background: #f7e1dc;
+}
