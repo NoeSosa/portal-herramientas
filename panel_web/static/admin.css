@@ -656,6 +656,8 @@
   transform-origin: left center;
   animation: ocr-box-in .34s cubic-bezier(.2, .8, .2, 1) forwards;
   animation-delay: calc(var(--i, 0) * 28ms);
+  pointer-events: auto;
+  cursor: help;
 }
 
 .ocr-box.serial {
