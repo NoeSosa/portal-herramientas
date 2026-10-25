@@ -18,6 +18,11 @@ const A = {
   ocrUltimoEstado: "",
   ocrSignature: "",
   ocrSeq: 0,
+  ocrMode: "live",
+  ocrWorker: "",
+  ocrUltimas: {},
+  ocrViewSignature: "",
+  actualPag: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -138,6 +143,8 @@ function conectarEventos() {
     A.jobId = e.target.value;
     A.ocrPag = 0;
     A.ocrJob = "";
+    A.ocrMode = "live";
+    A.ocrWorker = "";
     A.ocrUltimaPag = 0;
     A.ocrSignature = "";
     limpiarInspector();
@@ -148,14 +155,15 @@ function conectarEventos() {
     await cargarProgreso();
   });
 
-  $("ocr-prev").addEventListener("click", () => moverOcr(-1));
-  $("ocr-next").addEventListener("click", () => moverOcr(1));
-  $("ocr-reload").addEventListener("click", () => {
+  $("scan-prev").addEventListener("click", () => moverOcr(-1));
+  $("scan-next").addEventListener("click", () => moverOcr(1));
+  $("scan-reload").addEventListener("click", () => {
     if (A.ocrPag) cargarOcrPagina(A.ocrPag, false, true);
   });
-  $("ocr-page-input").addEventListener("change", (e) => {
+  $("scan-page-input").addEventListener("change", (e) => {
     seleccionarPaginaOcr(e.target.value);
   });
+  $("scan-view").addEventListener("change", (e) => cambiarVistaOcr(e.target.value));
 
   $("inv-form").addEventListener("submit", guardarEquipo);
   $("inv-cancel").addEventListener("click", limpiarFormulario);
@@ -284,11 +292,10 @@ function limpiarEnVivo() {
   set("live-pages", "—");
   set("live-eta", "—");
   set("scan-page", "—");
-  set("scan-total", "—");
+  set("scan-total", "/ —");
   set("scan-number", "—");
   set("scan-doc", "Sin documento");
   set("scan-range", "—");
-  set("admin-ocr", "Esperando la primera hoja…");
   $("admin-pages").textContent = "";
   $("admin-workers").textContent = "";
   $("admin-recent").textContent = "";
@@ -329,41 +336,16 @@ function pintarProgreso(d) {
   set("live-eta", job.status === "done" ? "—" : fmtDuracion(job.eta_seconds));
   $("live-progress").style.transform = `scaleX(${Math.max(0, Math.min(100, job.progress)) / 100})`;
 
-  set("scan-page", actual);
-  set("scan-total", paginas);
-  set("scan-number", `${actual} / ${paginas}`);
+  A.actualPag = actual;
+  set("scan-total", `/ ${paginas || "—"}`);
+  set("scan-number", `${actual} / ${paginas || "—"}`);
   set("scan-doc", job.filename);
-  set("scan-range", `${job.pages_done} / ${paginas} hojas leídas`);
   $("scan-paper").classList.toggle("scanning", job.status === "running");
 
-  pintarHoja(job.id, actual, job.status);
   pintarWorkers(d.workers || []);
-  set("admin-ocr", d.ultima_lectura || "Esperando la primera hoja…");
   pintarPaginas(d.pages || [], paginas, actual);
   pintarRecientes(d.pages || []);
-  actualizarInspector(job, actual, paginas);
-}
-
-function pintarHoja(jobId, pag, estado) {
-  const img = $("scan-img");
-  const placeholder = $("scan-placeholder");
-  const url = `/api/admin/jobs/${encodeURIComponent(jobId)}/page/${pag}.png`;
-  if (img.dataset.pag !== String(pag) || img.dataset.job !== jobId) {
-    img.dataset.pag = String(pag);
-    img.dataset.job = jobId;
-    img.hidden = true;
-    placeholder.hidden = false;
-    img.onload = () => {
-      img.hidden = false;
-      placeholder.hidden = true;
-    };
-    img.onerror = () => {
-      img.hidden = true;
-      placeholder.hidden = false;
-      placeholder.textContent = estado === "running" ? "LEYENDO" : "SIN IMAGEN";
-    };
-    img.src = `${url}?v=${Date.now()}`;
-  }
+  actualizarInspector(job, actual, paginas, d.pages || [], d.workers || []);
 }
 
 function limpiarInspector() {
@@ -374,56 +356,132 @@ function limpiarInspector() {
   A.ocrUltimoJob = "";
   A.ocrUltimoEstado = "";
   A.ocrSignature = "";
-  const img = $("ocr-page-img");
+  A.ocrMode = "live";
+  A.ocrWorker = "";
+  A.ocrUltimas = {};
+  A.ocrViewSignature = "";
+  const img = $("scan-img");
   img.hidden = true;
   img.removeAttribute("src");
   img.dataset.key = "";
-  const vacio = $("ocr-page-empty");
+  const vacio = $("scan-placeholder");
   vacio.hidden = false;
-  vacio.textContent = "Selecciona una hoja";
-  $("ocr-boxes").textContent = "";
-  $("ocr-page-input").value = "1";
-  set("ocr-total", "/ —");
+  vacio.textContent = "PDF";
+  $("scan-boxes").textContent = "";
+  $("scan-page-input").value = "1";
+  set("scan-total", "/ —");
+  set("scan-number", "—");
+  set("scan-doc", "Sin documento");
+  set("scan-range", "—");
   set("ocr-status", "SIN LECTURA");
   set("ocr-serial", "—");
   set("ocr-worker", "—");
   set("ocr-ms", "—");
   set("ocr-source", "—");
-  set("ocr-text", "Elige una hoja del mapa para ver lo que leyó el OCR.");
+  set("ocr-text", "Esperando la primera hoja…");
+  const select = $("scan-view");
+  select.textContent = "";
+  select.appendChild(new Option("EN VIVO · ÚLTIMA HOJA", "live"));
 }
 
-function actualizarInspector(job, actual, total) {
+function actualizarInspector(job, actual, total, pages, workers) {
   const n = Number(total || 0);
   A.ocrTotal = n;
-  const input = $("ocr-page-input");
-  input.max = String(Math.max(1, n));
-  set("ocr-total", `/ ${n || "—"}`);
+  A.actualPag = Number(actual) || 0;
+  $("scan-total").textContent = `/ ${n || "—"}`;
+  $("scan-page-input").max = String(Math.max(1, n));
+
+  const ultimas = {};
+  for (const p of pages || []) {
+    const slot = Number(p.slot);
+    if (!Number.isInteger(slot) || slot < 0) continue;
+    if (!p.ocr && !p.estado) continue;
+    const clave = String(slot);
+    if (!ultimas[clave] || Number(p.pag) > Number(ultimas[clave])) {
+      ultimas[clave] = Number(p.pag);
+    }
+  }
+  A.ocrUltimas = ultimas;
+
+  const select = $("scan-view");
+  const vistaFirma = (workers || [])
+    .map((w) => `${w.slot}:${w.worker || ""}`)
+    .join("|");
+  if (A.ocrViewSignature !== vistaFirma || select.options.length < 2) {
+    A.ocrViewSignature = vistaFirma;
+    select.textContent = "";
+    select.appendChild(new Option("EN VIVO · ÚLTIMA HOJA", "live"));
+    for (const w of workers || []) {
+      const slot = Number(w.slot);
+      if (!Number.isInteger(slot) || slot < 0) continue;
+      const etiqueta = `LECTOR ${slot + 1}${w.worker ? ` · ${w.worker}` : ""}`;
+      select.appendChild(new Option(etiqueta, `worker:${slot}`));
+    }
+    select.appendChild(new Option("HOJA MANUAL", "manual"));
+  }
+  if (A.ocrMode === "worker" && ![...select.options].some((o) => o.value === `worker:${A.ocrWorker}`)) {
+    A.ocrMode = "live";
+    A.ocrWorker = "";
+  }
 
   if (A.ocrJob !== job.id) {
     A.ocrJob = job.id;
+    A.ocrMode = "live";
+    A.ocrWorker = "";
     A.ocrPag = Number(actual) || 1;
     A.ocrUltimaPag = 0;
     A.ocrUltimoJob = "";
+    A.ocrUltimoEstado = "";
     A.ocrSignature = "";
-    limpiarInspector();
-    A.ocrJob = job.id;
-    A.ocrTotal = n;
-    A.ocrPag = Math.max(1, Math.min(n || 1, Number(actual) || 1));
   }
-  if (!A.ocrPag) A.ocrPag = Math.max(1, Math.min(n || 1, Number(actual) || 1));
+
+  if (A.ocrMode === "live") {
+    A.ocrPag = Number(actual) || 1;
+  } else if (A.ocrMode === "worker") {
+    const pagina = A.ocrUltimas[String(A.ocrWorker)];
+    A.ocrPag = pagina ? Number(pagina) : (Number(actual) || 1);
+  }
+
+  if (!A.ocrPag) A.ocrPag = 1;
   if (n && A.ocrPag > n) A.ocrPag = n;
-  input.value = String(A.ocrPag);
+  const inputPag = $("scan-page-input");
+  if (document.activeElement !== inputPag) inputPag.value = String(A.ocrPag);
+
+  const opcion = A.ocrMode === "worker" ? `worker:${A.ocrWorker}` : A.ocrMode;
+  if ([...select.options].some((o) => o.value === opcion)) select.value = opcion;
   marcarPaginaOcr();
 
-  const vivo = job.status === "running" || job.status === "queued";
   let cambio = A.ocrUltimoJob !== job.id || Number(A.ocrUltimaPag) !== Number(A.ocrPag);
   if (A.ocrUltimoEstado !== job.status) {
     A.ocrUltimoEstado = job.status;
     cambio = true;
   }
-  if (cambio || (vivo && Number(A.ocrPag) === Number(actual))) {
+  const vivo = job.status === "running" || job.status === "queued";
+  if (cambio || (vivo && A.ocrMode === "live" && Number(A.ocrPag) === Number(actual))) {
     cargarOcrPagina(A.ocrPag, true);
   }
+}
+
+function cambiarVistaOcr(valor) {
+  if (!A.jobId) return;
+  if (valor === "live") {
+    A.ocrMode = "live";
+    A.ocrWorker = "";
+    A.ocrPag = Number(A.actualPag) || 1;
+  } else if (valor.startsWith("worker:")) {
+    A.ocrMode = "worker";
+    A.ocrWorker = valor.slice(7);
+    const pagina = A.ocrUltimas[A.ocrWorker];
+    A.ocrPag = pagina ? Number(pagina) : (Number(A.actualPag) || 1);
+  } else {
+    A.ocrMode = "manual";
+    A.ocrWorker = "";
+  }
+  A.ocrUltimaPag = 0;
+  A.ocrSignature = "";
+  $("scan-page-input").value = String(A.ocrPag || 1);
+  marcarPaginaOcr();
+  if (A.ocrPag) cargarOcrPagina(A.ocrPag, false, true);
 }
 
 function marcarPaginaOcr() {
@@ -435,10 +493,14 @@ function marcarPaginaOcr() {
 function seleccionarPaginaOcr(pag) {
   if (!A.jobId || !A.ocrTotal) return;
   const destino = Math.max(1, Math.min(Number(A.ocrTotal), Number(pag) || 1));
+  A.ocrMode = "manual";
+  A.ocrWorker = "";
   A.ocrPag = destino;
   A.ocrUltimaPag = 0;
   A.ocrSignature = "";
-  $("ocr-page-input").value = String(destino);
+  $("scan-page-input").value = String(destino);
+  const select = $("scan-view");
+  if ([...select.options].some((o) => o.value === "manual")) select.value = "manual";
   marcarPaginaOcr();
   cargarOcrPagina(destino, false, true);
 }
@@ -449,9 +511,10 @@ function moverOcr(delta) {
 }
 
 function pintarOcrImagen(pag, estado, forzar) {
-  const img = $("ocr-page-img");
-  const vacio = $("ocr-page-empty");
+  const img = $("scan-img");
+  const vacio = $("scan-placeholder");
   const key = `${A.jobId}:${pag}`;
+  set("scan-number", `${pag} / ${A.ocrTotal || "—"}`);
   if (img.dataset.key === key && !forzar) return;
   img.dataset.key = key;
   img.hidden = true;
@@ -460,6 +523,10 @@ function pintarOcrImagen(pag, estado, forzar) {
   img.onload = () => {
     img.hidden = false;
     vacio.hidden = true;
+    const paper = $("scan-paper");
+    if (img.naturalWidth && img.naturalHeight) {
+      paper.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+    }
   };
   img.onerror = () => {
     img.hidden = true;
@@ -503,8 +570,11 @@ function pintarOcr(d, forzar = false) {
   set("ocr-ms", d.ms ? fmtMs(d.ms) : "—");
   set("ocr-source", d.fuente === "db" ? "TEXTO GUARDADO" : (d.parcial ? "OCR PARCIAL" : "OCR COMPLETO"));
   set("ocr-text", d.texto || "Sin texto OCR para esta hoja.");
+  set("scan-number", `${d.pag} / ${A.ocrTotal || "—"}`);
+  const vistaSel = $("scan-view").selectedOptions[0];
+  set("scan-range", `${vistaSel ? vistaSel.textContent : "HOJA"} · ${d.pag} / ${A.ocrTotal || "—"}`);
 
-  const cont = $("ocr-boxes");
+  const cont = $("scan-boxes");
   cont.textContent = "";
   const tipos = new Set(["serial", "modelo", "contador", "fecha"]);
   const cajas = Array.isArray(d.cajas) ? d.cajas : [];
@@ -542,6 +612,28 @@ function pintarWorkers(workers) {
   for (const w of workers) {
     const card = el("div", "worker-card");
     if (w.ultimo_ts && ahora - w.ultimo_ts < 8) card.classList.add("activo");
+    const slotWorker = Number.isInteger(w.slot) && w.slot >= 0 ? w.slot : -1;
+    if (slotWorker >= 0) {
+      if (A.ocrMode === "worker" && String(slotWorker) === A.ocrWorker) {
+        card.classList.add("worker-selected");
+      }
+      card.dataset.slot = String(slotWorker);
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.title = "Ver la última hoja de este lector";
+      const elegir = () => {
+        const valor = `worker:${slotWorker}`;
+        $("scan-view").value = valor;
+        cambiarVistaOcr(valor);
+      };
+      card.addEventListener("click", elegir);
+      card.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          elegir();
+        }
+      });
+    }
     const cab = el("div", "worker-cab");
     const slot = Number.isInteger(w.slot) && w.slot >= 0 ? w.slot + 1 : "?";
     cab.append(
