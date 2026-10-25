@@ -178,7 +178,13 @@ function conectarEventos() {
   $("scan-view").addEventListener("change", (e) => cambiarVistaOcr(e.target.value));
 
   $("inv-form").addEventListener("submit", guardarEquipo);
-  $("inv-cancel").addEventListener("click", limpiarFormulario);
+  $("inv-cancel").addEventListener("click", () => {
+    limpiarFormulario();
+    cerrarModalInventario();
+  });
+  $("inv-modal-close").addEventListener("click", () => {
+    cerrarModalInventario();
+  });
   $("inv-choose").addEventListener("click", () => $("inv-file").click());
   $("inv-file").addEventListener("change", (e) => {
     if (e.target.files && e.target.files[0]) subirExcel(e.target.files[0]);
@@ -186,8 +192,8 @@ function conectarEventos() {
   $("inv-import").addEventListener("click", () => $("inv-file").click());
   $("inv-add").addEventListener("click", () => {
     limpiarFormulario();
-    $("inv-sn").focus();
-    $("inv-form").scrollIntoView({behavior: "smooth", block: "center"});
+    $("inv-modal-title").textContent = "Nuevo equipo";
+    abrirModalInventario();
   });
   $("inv-export").addEventListener("click", exportarInventario);
   let timerUbicacion = null;
@@ -847,15 +853,27 @@ function editarEquipo(e) {
   $("inv-sn").value = e.sn;
   $("inv-save").textContent = "Guardar cambios";
   $("inv-cancel").hidden = false;
+  $("inv-modal-title").textContent = "Editar equipo";
   set("inv-form-status", `editando ${e.sn}`);
-  $("inv-form").scrollIntoView({behavior: "smooth", block: "center"});
+  abrirModalInventario();
+}
+
+function abrirModalInventario() {
+  const dialogo = $("inv-dialog");
+  if (!dialogo.open) dialogo.showModal();
+  window.setTimeout(() => $("inv-sn").focus(), 60);
+}
+
+function cerrarModalInventario() {
+  const dialogo = $("inv-dialog");
+  if (dialogo.open) dialogo.close();
 }
 
 function limpiarFormulario() {
   A.editing = null;
   $("inv-form").reset();
   $("inv-save").textContent = "Guardar serial";
-  $("inv-cancel").hidden = true;
+  $("inv-cancel").hidden = false;
   set("inv-form-status", "");
 }
 
@@ -893,6 +911,7 @@ async function guardarEquipo(evento) {
       ? `${d.creado ? "Alta" : "Actualizado"} ${d.sn} · ${d.total} seriales`
       : d.detalle || "No se pudo exportar el Excel.");
     limpiarFormulario();
+    cerrarModalInventario();
     await cargarInventario();
     await cargarOverview();
     await cargarSedes();

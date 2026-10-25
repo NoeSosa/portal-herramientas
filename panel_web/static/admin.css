@@ -975,3 +975,58 @@
   gap: 12px;
   margin-top: 10px;
 }
+
+/* Modal de inventario */
+.admin-modal {
+  width: min(780px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 20px;
+}
+
+.admin-modal::backdrop {
+  background: rgba(10, 27, 46, .38);
+}
+
+.admin-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-modal-head h2 {
+  margin: 5px 0 0;
+  color: var(--navy);
+  font: 400 24px/1.1 var(--serif);
+}
+
+.admin-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 400 22px/1 var(--mono);
+  cursor: pointer;
+}
+
+.admin-modal .inventory-form {
+  margin-top: 12px;
+}
+
+.inventory-field-wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 900px) {
+  .inventory-field-wide { grid-column: span 2; }
+}
+
+@media (max-width: 700px) {
+  .admin-modal { padding: 14px; }
+  .inventory-field-wide { grid-column: span 1; }
+}

@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025k">
-  <link rel="stylesheet" href="/static/admin.css?v=20261025k">
+  <link rel="stylesheet" href="/static/style.css?v=20261025l">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025l">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -206,31 +206,40 @@
         como “desconocido”. Importa el Excel del inventario o da de alta un serial.
       </p>
 
-      <form class="inventory-form" id="inv-form" autocomplete="off">
-        <label>Serial<input id="inv-sn" name="sn" required></label>
-        <label>Marca<input id="inv-marca" name="marca"></label>
-        <label>Modelo<input id="inv-modelo" name="modelo"></label>
-        <label>Sede<input id="inv-sede" name="sede"></label>
-        <label>Zona<input id="inv-zona" name="zona"></label>
-        <label>Domicilio<input id="inv-domicilio" name="domicilio"></label>
-        <label>Ubicación del equipo
-          <input id="inv-ubicacion" name="ubicacion" list="inv-ubicaciones" autocomplete="off">
-          <datalist id="inv-ubicaciones"></datalist>
-          <span class="location-hint" id="inv-ubicacion-aviso"></span>
-          <div class="location-suggestions" id="inv-ubicacion-sugerencias"></div>
-        </label>
-        <label>Piso<input id="inv-piso" name="piso" placeholder="editable después"></label>
-        <label>Estatus<input id="inv-estatus" name="estatus"></label>
-        <label>Contador inicial<input id="inv-contador" name="contador_inicial"></label>
-        <div class="inventory-form-actions">
-          <button class="btn btn-primary" type="submit" id="inv-save">Guardar serial</button>
-          <button class="btn-text" type="button" id="inv-cancel" hidden>Cancelar</button>
-          <span class="mono-label" id="inv-form-status"></span>
+      <dialog id="inv-dialog" class="admin-modal" aria-labelledby="inv-modal-title">
+        <div class="admin-modal-head">
+          <div>
+            <span class="mono-label">INVENTARIO / BD</span>
+            <h2 id="inv-modal-title">Nuevo equipo</h2>
+          </div>
+          <button class="admin-modal-close" type="button" id="inv-modal-close" aria-label="Cerrar">×</button>
         </div>
-      </form>
-      <p class="inventory-hint" id="inv-ubicacion-hint">
-        Escribe la ubicación y elige una sugerencia para evitar duplicados.
-      </p>
+        <form class="inventory-form" id="inv-form" autocomplete="off">
+          <label>Serial<input id="inv-sn" name="sn" required></label>
+          <label>Marca<input id="inv-marca" name="marca"></label>
+          <label>Modelo<input id="inv-modelo" name="modelo"></label>
+          <label>Sede<input id="inv-sede" name="sede"></label>
+          <label>Zona<input id="inv-zona" name="zona"></label>
+          <label>Domicilio<input id="inv-domicilio" name="domicilio"></label>
+          <label class="inventory-field-wide">Ubicación del equipo
+            <input id="inv-ubicacion" name="ubicacion" list="inv-ubicaciones" autocomplete="off">
+            <datalist id="inv-ubicaciones"></datalist>
+            <span class="location-hint" id="inv-ubicacion-aviso"></span>
+            <div class="location-suggestions" id="inv-ubicacion-sugerencias"></div>
+          </label>
+          <label>Piso<input id="inv-piso" name="piso" placeholder="editable después"></label>
+          <label>Estatus<input id="inv-estatus" name="estatus"></label>
+          <label>Contador inicial<input id="inv-contador" name="contador_inicial"></label>
+          <div class="inventory-form-actions">
+            <button class="btn btn-primary" type="submit" id="inv-save">Guardar serial</button>
+            <button class="btn-text" type="button" id="inv-cancel">Cancelar</button>
+            <span class="mono-label" id="inv-form-status"></span>
+          </div>
+        </form>
+        <p class="inventory-hint" id="inv-ubicacion-hint">
+          Escribe la ubicación y elige una sugerencia para evitar duplicados.
+        </p>
+      </dialog>
 
       <div class="inventory-filters">
         <input type="search" id="inv-q" placeholder="serial, marca, modelo, sede, ubicación o piso…">
@@ -299,6 +308,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261025k" defer></script>
+  <script src="/static/admin.js?v=20261025l" defer></script>
 </body>
 </html>
