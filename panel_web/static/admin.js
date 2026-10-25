@@ -91,7 +91,17 @@ async function api(ruta, opciones = {}) {
     throw new Error("Sesión expirada.");
   }
   const tipo = respuesta.headers.get("content-type") || "";
-  const datos = tipo.includes("application/json") ? await respuesta.json() : null;
+  let datos = null;
+  if (respuesta.status !== 204 && tipo.includes("application/json")) {
+    const texto = await respuesta.text();
+    if (texto.trim()) {
+      try {
+        datos = JSON.parse(texto);
+      } catch {
+        datos = null;
+      }
+    }
+  }
   if (!respuesta.ok) {
     const detalle = datos && typeof datos.detail === "string"
       ? datos.detail : `Error del servidor (${respuesta.status}).`;
