@@ -310,6 +310,10 @@ def procesar(job: Any) -> None:
         zip_path = _zip_resultado(job_dir, salida)
         paginas = int(job["pages"] or 0)
         db.finalizar_job(con, job_id, str(zip_path), paginas)
+        try:
+            db.registrar_cobertura_job(con, job_id)
+        except Exception:
+            logger.exception("No se pudo registrar cobertura de %s", job_id)
         db.auditar(
             con, user_id=owner_id, email=job["owner_email"],
             action="job_done", job_id=job_id, detail=f"{paginas} págs.",

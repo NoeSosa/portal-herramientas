@@ -1,6 +1,6 @@
 # Cobertura mensual y faltantes — diseño
 
-**Estado:** propuesta, **no implementada**.  
+**Estado:** primera versión implementada (cobertura, faltantes y asignación de sedes); pendientes de validar con datos reales.
 **Fecha:** 2026-10-25.
 
 ## Qué se quiere responder
@@ -49,15 +49,9 @@ duplicados = escaneos del serial - 1 (por mes/sede)
 
 ### Estatus del inventario
 
-Hay que definir qué estatus cuentan como “esperados”. Opciones:
-
-- incluir solo `En Operación`;
-- incluir `En Operación` y `Sin tóner`/incidencias;
-- excluir `Baja`, `Almacenada`, `Dañada`.
-
-Recomendación inicial: **incluir todos menos `Baja` y `Almacenada`**, y permitir
-al administrador ajustar la lista. Sin esta decisión, los faltantes pueden ser
-falsos.
+**Todos los estatus cuentan como esperados**, por decisión de operación: una
+sede debe controlar también equipos dados de baja o almacenados. No se filtra
+por `estatus`.
 
 ### Fecha del escaneo
 

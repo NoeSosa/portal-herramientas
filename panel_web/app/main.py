@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import uuid
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -371,10 +372,17 @@ async def salud() -> dict[str, Any]:
 
 @app.get("/api/me")
 async def yo(request: Request, usuario=Depends(usuario_actual)) -> dict[str, Any]:
+    con = _conexion()
+    try:
+        sedes = (db.listar_sedes(con) if usuario["role"] == "admin"
+                 else db.sedes_usuario(con, int(usuario["id"])))
+    finally:
+        con.close()
     return {
         "email": usuario["email"],
-        "name": usuario["name"] or usuario["email"],
+        "name": usuario["display_name"] or usuario["name"] or usuario["email"],
         "role": usuario["role"],
+        "sedes": sedes,
         "csrf": token_csrf(request),
         "limits": {
             "max_upload_mb": settings.max_upload_mb,
@@ -383,6 +391,56 @@ async def yo(request: Request, usuario=Depends(usuario_actual)) -> dict[str, Any
             "max_queued_jobs": settings.max_queued_jobs,
         },
     }
+
+
+@app.patch("/api/me")
+async def actualizar_me(
+    request: Request, usuario=Depends(usuario_actual),
+    _csrf=Depends(verificar_csrf),
+) -> dict[str, Any]:
+    datos = await request.json()
+    nombre = re.sub(r"\s+", " ", str(datos.get("name") or "")).strip()
+    if not nombre or len(nombre) > 120:
+        raise HTTPException(status_code=400, detail="El nombre debe tener entre 1 y 120 caracteres.")
+    con = _conexion()
+    try:
+        db.actualizar_display_name(con, int(usuario["id"]), nombre)
+        db.auditar(
+            con, user_id=int(usuario["id"]), email=usuario["email"],
+            action="perfil_nombre", ip=ip_cliente(request), detail=nombre,
+        )
+    finally:
+        con.close()
+    return {"ok": True, "name": nombre}
+
+
+@app.get("/api/cobertura")
+async def cobertura(
+    request: Request, periodo: str = "", sede: str = "",
+    usuario=Depends(usuario_actual),
+) -> dict[str, Any]:
+    if periodo and not re.fullmatch(r"\d{4}-\d{2}", periodo):
+        raise HTTPException(status_code=400, detail="Periodo inválido; usa YYYY-MM.")
+    periodo = periodo or db.periodo_de()
+    con = _conexion()
+    try:
+        if usuario["role"] == "admin":
+            sedes = [sede] if sede else db.listar_sedes(con)
+            db.backfill_cobertura(con, periodo)
+            datos = [db.cobertura_sede(con, s, periodo) for s in sedes]
+            return {
+                "periodo": periodo,
+                "sedes": datos,
+                "esperados": sum(d["esperados"] for d in datos),
+                "escaneados": sum(d["escaneados"] for d in datos),
+                "faltantes": sum(len(d["faltantes"]) for d in datos),
+                "duplicados": sum(len(d["duplicados"]) for d in datos),
+            }
+        return db.cobertura_para_usuario(con, int(usuario["id"]), periodo, sede or None)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+    finally:
+        con.close()
 
 
 @app.post("/api/jobs", status_code=201)
@@ -536,6 +594,108 @@ async def descargar(
         return FileResponse(ruta, media_type="application/zip", filename=descarga)
     finally:
         con.close()
+
+
+@app.get("/api/jobs/{job_id}/resultado")
+async def resultado_job(
+    job_id: str, usuario=Depends(usuario_actual)
+) -> dict[str, Any]:
+    con = _conexion()
+    try:
+        job = db.job_por_id(con, job_id, int(usuario["id"]))
+        if not job:
+            raise HTTPException(status_code=404, detail="Documento no encontrado.")
+        if job["status"] != "done" or not job["result_path"]:
+            raise HTTPException(status_code=409, detail="El resultado todavía no está listo.")
+        filas = con.execute(
+            "SELECT estado, sn FROM job_pages WHERE job_id=?", (job_id,)
+        ).fetchall()
+        por_estado: dict[str, int] = {}
+        seriales: set[str] = set()
+        for fila in filas:
+            estado = (fila["estado"] or "SIN_ESTADO").upper()
+            por_estado[estado] = por_estado.get(estado, 0) + 1
+            if fila["sn"] and estado != "DESCARTADA":
+                seriales.add(fila["sn"])
+        en_inventario = {
+            f["sn"] for f in con.execute(
+                "SELECT sn FROM equipos WHERE sn IN (%s)"
+                % ",".join("?" * len(seriales)),
+                tuple(seriales),
+            ).fetchall()
+        } if seriales else set()
+        no_inventario = sorted(seriales - en_inventario)
+    finally:
+        con.close()
+
+    ruta = Path(job["result_path"]).resolve()
+    if not ruta.is_relative_to(settings.data_dir.resolve()) or not ruta.is_file():
+        raise HTTPException(status_code=404, detail="Resultado no encontrado.")
+    documentos = []
+    try:
+        with zipfile.ZipFile(ruta) as z:
+            for info in z.infolist():
+                if info.is_dir() or not info.filename.lower().endswith(".pdf"):
+                    continue
+                partes = Path(info.filename).parts
+                estado = "POR_VERIFICAR" if "POR_VERIFICAR" in partes else (
+                    "VERIFICADO" if "VERIFICADOS" in partes else "OTRO"
+                )
+                nombre = Path(info.filename).name
+                documentos.append({
+                    "nombre": nombre,
+                    "ruta": info.filename,
+                    "bytes": info.file_size,
+                    "estado": estado,
+                    "serial": nombre.split("__", 1)[0],
+                })
+    except (OSError, zipfile.BadZipFile):
+        raise HTTPException(status_code=500, detail="No se pudo abrir el ZIP.") from None
+    documentos.sort(key=lambda d: (d["estado"], d["serial"], d["nombre"]))
+    return {
+        "job": {"id": job_id, "filename": job["filename"], "pages": int(job["pages"] or 0)},
+        "resumen": {
+            "por_estado": por_estado,
+            "seriales": len(seriales),
+            "no_inventario": no_inventario,
+        },
+        "documentos": documentos,
+    }
+
+
+@app.get("/api/jobs/{job_id}/documento")
+async def descargar_documento(
+    request: Request, job_id: str, ruta: str = "",
+    usuario=Depends(usuario_actual),
+):
+    con = _conexion()
+    try:
+        job = db.job_por_id(con, job_id, int(usuario["id"]))
+        if not job or job["status"] != "done" or not job["result_path"]:
+            raise HTTPException(status_code=404, detail="Documento no encontrado.")
+        zip_path = Path(job["result_path"]).resolve()
+        if not zip_path.is_relative_to(settings.data_dir.resolve()) or not zip_path.is_file():
+            raise HTTPException(status_code=404, detail="Resultado no encontrado.")
+        with zipfile.ZipFile(zip_path) as z:
+            try:
+                info = z.getinfo(ruta)
+            except KeyError:
+                raise HTTPException(status_code=404, detail="Hoja no encontrada.") from None
+            if info.is_dir() or not info.filename.lower().endswith(".pdf"):
+                raise HTTPException(status_code=404, detail="Archivo inválido.")
+            contenido = z.read(info)
+        db.auditar(
+            con, user_id=int(usuario["id"]), email=usuario["email"],
+            action="download_documento", job_id=job_id,
+            ip=ip_cliente(request), detail=info.filename,
+        )
+    finally:
+        con.close()
+    nombre = Path(info.filename).name
+    return Response(
+        content=contenido, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
 
 
 @app.delete("/api/jobs/{job_id}", status_code=204)
@@ -1007,6 +1167,110 @@ async def admin_exportar_inventario(
         )
         return {"ok": ok, "detalle": detalle,
                 "filas": db.contar_equipos(con), "destino": destino.name}
+    finally:
+        con.close()
+
+
+@app.get("/api/admin/usuarios")
+async def admin_usuarios(admin=Depends(admin_actual)) -> dict[str, Any]:
+    con = _conexion()
+    try:
+        return {
+            "usuarios": db.listar_usuarios(con),
+            "sedes": db.listar_sedes(con),
+        }
+    finally:
+        con.close()
+
+
+@app.put("/api/admin/usuarios/{uid}")
+async def admin_guardar_usuario(
+    uid: int, request: Request, admin=Depends(admin_actual),
+    _csrf=Depends(verificar_csrf),
+) -> dict[str, Any]:
+    datos = await request.json()
+    sedes = datos.get("sedes")
+    if not isinstance(sedes, list):
+        raise HTTPException(status_code=400, detail="Envia una lista de sedes.")
+    con = _conexion()
+    try:
+        usuario = db.usuario_por_id(con, uid)
+        if not usuario:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        validas = set(db.listar_sedes(con))
+        pedidas = [str(s).strip() for s in sedes if str(s).strip()]
+        if any(s not in validas for s in pedidas):
+            raise HTTPException(status_code=400, detail="Hay una sede que no existe en el inventario.")
+        db.asignar_sedes(con, uid, pedidas)
+        db.auditar(
+            con, user_id=int(admin["id"]), email=admin["email"],
+            action="usuario_sedes", ip=ip_cliente(request),
+            detail=f"{usuario['email']}: {', '.join(sorted(pedidas))}",
+        )
+        return {"ok": True, "usuario": db.usuario_por_id(con, uid)["email"],
+                "sedes": db.sedes_usuario(con, uid)}
+    finally:
+        con.close()
+
+
+@app.get("/api/admin/ubicaciones")
+async def admin_ubicaciones(
+    q: str = "", admin=Depends(admin_actual)
+) -> dict[str, Any]:
+    con = _conexion()
+    try:
+        return {"ubicaciones": db.sugerencias_ubicacion(con, q)}
+    finally:
+        con.close()
+
+
+@app.post("/api/admin/cobertura/excluir")
+async def admin_excluir_cobertura(
+    request: Request, admin=Depends(admin_actual),
+    _csrf=Depends(verificar_csrf),
+) -> dict[str, Any]:
+    datos = await request.json()
+    try:
+        cid = int(datos.get("id") or 0)
+    except (TypeError, ValueError):
+        cid = 0
+    if not cid:
+        raise HTTPException(status_code=400, detail="Escaneo inválido.")
+    con = _conexion()
+    try:
+        ok = db.excluir_cobertura(con, cid, str(datos.get("motivo") or ""))
+        if not ok:
+            raise HTTPException(status_code=404, detail="Escaneo no encontrado.")
+        db.auditar(
+            con, user_id=int(admin["id"]), email=admin["email"],
+            action="cobertura_excluir", ip=ip_cliente(request), detail=str(cid),
+        )
+        return {"ok": True}
+    finally:
+        con.close()
+
+
+@app.post("/api/admin/cobertura/reiniciar")
+async def admin_reiniciar_cobertura(
+    request: Request, admin=Depends(admin_actual),
+    _csrf=Depends(verificar_csrf),
+) -> dict[str, Any]:
+    datos = await request.json()
+    periodo = str(datos.get("periodo") or "")
+    sede = str(datos.get("sede") or "")
+    if not re.fullmatch(r"\d{4}-\d{2}", periodo) or not sede:
+        raise HTTPException(status_code=400, detail="Periodo y sede son obligatorios.")
+    if str(datos.get("confirm") or "").strip().upper() != "REINICIAR":
+        raise HTTPException(status_code=400, detail="Escribe REINICIAR para confirmar.")
+    con = _conexion()
+    try:
+        borrados = db.reiniciar_cobertura(con, periodo, sede)
+        db.auditar(
+            con, user_id=int(admin["id"]), email=admin["email"],
+            action="cobertura_reiniciar", ip=ip_cliente(request),
+            detail=f"{periodo} {sede}: {borrados}",
+        )
+        return {"ok": True, "borrados": borrados}
     finally:
         con.close()
 

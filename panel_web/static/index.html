@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261020c">
+  <link rel="stylesheet" href="/static/style.css?v=20261025f">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -33,8 +33,12 @@
         <span class="nav-num">02</span>
         <span>Cola y resultados</span>
       </a>
-      <a class="nav-link" id="nav-admin" href="/admin" hidden>
+      <a class="nav-link" href="#cobertura">
         <span class="nav-num">03</span>
+        <span>Cobertura</span>
+      </a>
+      <a class="nav-link" id="nav-admin" href="/admin" hidden>
+        <span class="nav-num">04</span>
         <span>Administración</span>
       </a>
     </nav>
@@ -43,6 +47,8 @@
       <p class="mono-label">OPERACIÓN</p>
       <p class="sidebar-status"><span class="status-dot" aria-hidden="true"></span> Servicio activo</p>
       <p class="sidebar-user" data-user-email>—</p>
+      <p class="sidebar-user" data-user-name>—</p>
+      <button class="btn-text sidebar-profile" type="button" id="btn-perfil">Editar mi nombre</button>
     </div>
 
     <div class="sidebar-foot">
@@ -150,6 +156,7 @@
           <span class="mono-label" id="cola-title">COLA Y RESULTADOS</span>
         </div>
         <div class="section-tools">
+          <input id="job-search" class="coverage-search" type="search" placeholder="Buscar documento…">
           <span class="mono-label" id="jobs-count">0 DOCUMENTOS</span>
           <button class="btn-text" type="button" id="btn-refresh">Actualizar ↻</button>
         </div>
@@ -181,12 +188,98 @@
       </p>
     </section>
 
+    <section class="coverage-section" id="cobertura" aria-labelledby="cobertura-title">
+      <div class="section-head">
+        <div class="section-label">
+          <span class="section-num">03</span>
+          <span class="mono-label" id="cobertura-title">COBERTURA MENSUAL</span>
+        </div>
+        <div class="section-tools coverage-tools">
+          <label class="mono-label" for="cov-periodo">MES</label>
+          <input id="cov-periodo" class="month-input" type="month">
+          <select id="cov-sede" class="month-input" aria-label="Sede"></select>
+          <button class="btn-text" type="button" id="cov-refresh">Actualizar ↻</button>
+          <button class="btn-text danger" type="button" id="cov-reset" hidden>Reiniciar mes</button>
+        </div>
+      </div>
+
+      <div id="cov-empty" class="coverage-empty" hidden>
+        No tienes una sede asignada. Pide a administración que asocie tu cuenta a una sede.
+      </div>
+
+      <div id="cov-content">
+        <div class="coverage-stats">
+          <div><span class="mono-label">ESPERADOS</span><strong id="cov-esperados">—</strong></div>
+          <div><span class="mono-label">ESCANEADOS</span><strong id="cov-escaneados">—</strong></div>
+          <div><span class="mono-label">FALTANTES</span><strong id="cov-faltantes">—</strong></div>
+          <div><span class="mono-label">DUPLICADOS</span><strong id="cov-duplicados">—</strong></div>
+        </div>
+
+        <div class="coverage-block">
+          <div class="coverage-block-head">
+            <span class="mono-label">FALTANTES DE <span id="cov-sede-nombre">—</span></span>
+            <span class="mono-label" id="cov-faltantes-count">0</span>
+          </div>
+          <div class="table-scroll">
+            <table class="admin-table coverage-table">
+              <thead><tr><th>Sede</th><th>Serial</th><th>Marca</th><th>Modelo</th><th>Ubicación</th><th>Piso</th><th>Estatus</th></tr></thead>
+              <tbody id="cov-faltantes-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="coverage-block">
+          <div class="coverage-block-head">
+            <span class="mono-label">ESCANEADOS / DUPLICADOS</span>
+            <input id="cov-buscar" class="coverage-search" type="search" placeholder="Buscar serial, ubicación…">
+          </div>
+          <div class="table-scroll">
+            <table class="admin-table coverage-table">
+              <thead><tr><th>Serial</th><th>Fecha</th><th>Usuario</th><th>Documento</th><th>Estado</th><th class="cov-admin-col" hidden>Acción</th></tr></thead>
+              <tbody id="cov-escaneados-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <footer class="workspace-foot">
       <span>MAINBIT · SEPARADOR DE PDFS</span>
       <span>MICROSOFT ENTRA ID / SSO</span>
       <span>2026</span>
     </footer>
   </main>
+
+  <dialog id="perfil-dialog" class="profile-dialog">
+    <form method="dialog" id="perfil-form">
+      <div class="section-label"><span class="section-num">01</span><span class="mono-label">MI NOMBRE</span></div>
+      <label for="perfil-name">Nombre visible</label>
+      <input id="perfil-name" maxlength="120" required>
+      <p class="form-status" id="perfil-status" role="status"></p>
+      <div class="profile-actions">
+        <button class="btn btn-primary" value="save" type="submit">Guardar</button>
+        <button class="btn-text" value="cancel" type="button" id="perfil-cancel">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="resultado-dialog" class="profile-dialog result-dialog">
+    <div class="section-label"><span class="section-num">02</span><span class="mono-label">RESULTADO</span></div>
+    <h2 id="resumen-nombre">—</h2>
+    <p class="result-summary" id="resumen-texto">Cargando…</p>
+    <p class="result-warning" id="resumen-aviso" hidden></p>
+    <div class="table-scroll">
+      <table class="coverage-table result-table">
+        <thead><tr><th>Serial</th><th>Estado</th><th>Tamaño</th><th></th></tr></thead>
+        <tbody id="resumen-documentos"></tbody>
+      </table>
+    </div>
+    <div class="profile-actions">
+      <button class="btn-text" type="button" id="resumen-cerrar">Cerrar</button>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
   <template id="job-template">
     <article class="job-row" role="row">
@@ -215,11 +308,12 @@
       </div>
       <div class="cell cell-actions" role="cell">
         <a class="action action-download download" download>ZIP ↓</a>
+        <button class="action action-summary summary" type="button">Resumen</button>
         <button class="action action-delete delete" type="button">Borrar</button>
       </div>
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261025c" defer></script>
+  <script src="/static/app.js?v=20261025f" defer></script>
 </body>
 </html>

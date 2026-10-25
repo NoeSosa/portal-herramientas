@@ -131,6 +131,8 @@ async function iniciar() {
   await cargarJobs();
   await cargarInventario();
   await cargarSedes();
+  await cargarUsuarios();
+  await cargarUbicaciones("");
 
   A.timer = window.setInterval(async () => {
     if (document.hidden) return;
@@ -183,6 +185,11 @@ function conectarEventos() {
   });
   $("inv-import").addEventListener("click", () => $("inv-file").click());
   $("inv-export").addEventListener("click", exportarInventario);
+  let timerUbicacion = null;
+  $("inv-ubicacion").addEventListener("input", (e) => {
+    clearTimeout(timerUbicacion);
+    timerUbicacion = setTimeout(() => cargarUbicaciones(e.target.value), 250);
+  });
   $("inv-delete-filtered").addEventListener("click", () => borrarInventario(false));
   $("inv-delete-all").addEventListener("click", () => borrarInventario(true));
 
@@ -979,6 +986,95 @@ async function cargarSedes() {
     }
   } catch (error) {
     set("inv-status", error.message);
+  }
+}
+
+async function cargarUbicaciones(q) {
+  try {
+    const d = await api(`/api/admin/ubicaciones?q=${encodeURIComponent(q || "")}`);
+    const lista = $("inv-ubicaciones");
+    lista.textContent = "";
+    for (const nombre of d.ubicaciones || []) {
+      const option = document.createElement("option");
+      option.value = nombre;
+      lista.appendChild(option);
+    }
+    const n = (d.ubicaciones || []).length;
+    set("inv-ubicacion-hint", n
+      ? `${n} ubicación(es) registrada(s). Elige una para no duplicar.`
+      : "No hay coincidencias; al guardar se crea una ubicación nueva.");
+  } catch (error) {
+    set("inv-ubicacion-hint", error.message);
+  }
+}
+
+async function cargarUsuarios() {
+  try {
+    const d = await api("/api/admin/usuarios");
+    const cont = $("usuarios-list");
+    cont.textContent = "";
+    const sedes = d.sedes || [];
+    set("usuarios-status", `${(d.usuarios || []).length} USUARIOS`);
+    if (!d.usuarios || !d.usuarios.length) {
+      cont.appendChild(el("p", "admin-empty", "Sin usuarios."));
+      return;
+    }
+    for (const u of d.usuarios) {
+      const card = el("div", "user-card");
+      const cabeza = el("div", "user-card-head");
+      cabeza.append(
+        el("b", "", u.email),
+        el("span", "mono-label", u.role === "admin" ? "ADMIN" : "USUARIO"),
+      );
+      card.appendChild(cabeza);
+      const sub = el("p", "user-card-sub", u.display_name || u.name || u.email);
+      card.appendChild(sub);
+
+      const grupo = el("div", "user-sedes");
+      const asignadas = new Set(u.sedes || []);
+      if (!sedes.length) {
+        grupo.appendChild(el("span", "mono-label", "Sin sedes en inventario"));
+      } else {
+        for (const sede of sedes) {
+          const label = document.createElement("label");
+          const check = document.createElement("input");
+          check.type = "checkbox";
+          check.value = sede;
+          check.checked = asignadas.has(sede);
+          label.appendChild(check);
+          label.appendChild(document.createTextNode(sede));
+          grupo.appendChild(label);
+        }
+      }
+      card.appendChild(grupo);
+
+      const acciones = el("div", "user-card-actions");
+      const guardar = el("button", "btn-text", "Guardar sedes");
+      guardar.type = "button";
+      guardar.addEventListener("click", () => guardarUsuario(u, card));
+      const estado = el("span", "mono-label", "");
+      acciones.append(guardar, estado);
+      card.appendChild(acciones);
+      cont.appendChild(card);
+    }
+  } catch (error) {
+    set("usuarios-status", error.message);
+  }
+}
+
+async function guardarUsuario(usuario, card) {
+  const checks = [...card.querySelectorAll(".user-sedes input[type=checkbox]")];
+  const sedes = checks.filter((c) => c.checked).map((c) => c.value);
+  const estado = card.querySelector(".user-card-actions .mono-label");
+  try {
+    const d = await api(`/api/admin/usuarios/${encodeURIComponent(usuario.id)}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sedes}),
+    });
+    estado.textContent = `Guardado · ${d.sedes.length} sede(s)`;
+  } catch (error) {
+    estado.textContent = error.message;
   }
 }
 

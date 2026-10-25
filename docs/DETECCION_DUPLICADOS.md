@@ -1,6 +1,6 @@
 # Detección de duplicados — diseño
 
-**Estado:** documentado, **no implementado**.  
+**Estado:** detección básica implementada en la cobertura mensual; hash de archivo y acciones avanzadas quedan pendientes.
 **Fecha:** 2026-10-25.
 
 ## Objetivo

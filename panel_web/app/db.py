@@ -8,11 +8,14 @@ haya dos procesos tomando el mismo job.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from .normalizacion import normalizar_serial, normalizar_ubicacion
 
 try:
     _TZ_CUOTA = ZoneInfo(os.environ.get("APP_TIMEZONE", "America/Mexico_City"))
@@ -22,14 +25,22 @@ except Exception:
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    oid         TEXT UNIQUE NOT NULL,
-    email       TEXT UNIQUE NOT NULL,
-    name        TEXT,
-    role        TEXT NOT NULL DEFAULT 'user',
-    created_at  TEXT NOT NULL,
-    last_login  TEXT
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    oid          TEXT UNIQUE NOT NULL,
+    email        TEXT UNIQUE NOT NULL,
+    name         TEXT,
+    display_name TEXT,
+    role         TEXT NOT NULL DEFAULT 'user',
+    created_at   TEXT NOT NULL,
+    last_login   TEXT
 );
+
+CREATE TABLE IF NOT EXISTS user_sedes (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sede    TEXT NOT NULL,
+    PRIMARY KEY (user_id, sede)
+);
+CREATE INDEX IF NOT EXISTS idx_user_sedes_sede ON user_sedes(sede);
 
 CREATE TABLE IF NOT EXISTS jobs (
     id           TEXT PRIMARY KEY,
@@ -119,6 +130,47 @@ CREATE TABLE IF NOT EXISTS sedes (
     huellas TEXT,
     activa  INTEGER DEFAULT 1
 );
+
+-- Ubicaciones canónicas: evita "2 penal", "Segundos Penal" y
+-- "Juzgado Segundo en Materia Penal" como tres ubicaciones distintas.
+CREATE TABLE IF NOT EXISTS ubicaciones (
+    normalizado TEXT PRIMARY KEY,
+    nombre      TEXT NOT NULL,
+    actualizado_en TEXT NOT NULL
+);
+
+-- Cobertura mensual por sede/serial. Persiste aunque el job se borre por
+-- retención; `excluido` permite corregir un escaneo sin borrar archivos.
+CREATE TABLE IF NOT EXISTS cobertura_escaneos (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    periodo         TEXT NOT NULL,
+    sede            TEXT NOT NULL,
+    sn              TEXT NOT NULL,
+    job_id          TEXT,
+    owner_id        INTEGER,
+    escaneado_en    TEXT NOT NULL,
+    duplicado       INTEGER NOT NULL DEFAULT 0,
+    duplicado_de    INTEGER,
+    excluido        INTEGER NOT NULL DEFAULT 0,
+    motivo_exclusion TEXT,
+    UNIQUE(periodo, sede, sn, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cobertura_periodo_sede
+    ON cobertura_escaneos(periodo, sede, excluido);
+CREATE INDEX IF NOT EXISTS idx_cobertura_sn
+    ON cobertura_escaneos(sn);
+
+CREATE TABLE IF NOT EXISTS cobertura_resets (
+    periodo TEXT NOT NULL,
+    sede    TEXT NOT NULL,
+    reset_en TEXT NOT NULL,
+    PRIMARY KEY (periodo, sede)
+);
+
+CREATE TABLE IF NOT EXISTS cobertura_meta (
+    periodo TEXT PRIMARY KEY,
+    backfill_en TEXT NOT NULL
+);
 """
 
 ESTADOS_ACTIVOS = ("queued", "running")
@@ -142,9 +194,59 @@ def conectar(ruta: Path) -> sqlite3.Connection:
 def _migrar_equipos(con: sqlite3.Connection) -> None:
     """Añade columnas nuevas a inventarios creados antes (idempotente)."""
     cols = {f["name"] for f in con.execute("PRAGMA table_info(equipos)")}
-    for col in ("ubicacion", "piso"):
+    for col in ("ubicacion", "piso", "sn_norm", "ubicacion_norm"):
         if col not in cols:
             con.execute(f"ALTER TABLE equipos ADD COLUMN {col} TEXT")
+
+
+def _migrar_usuarios(con: sqlite3.Connection) -> None:
+    cols = {f["name"] for f in con.execute("PRAGMA table_info(users)")}
+    if "display_name" not in cols:
+        con.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+
+
+def _reconstruir_ubicaciones(con: sqlite3.Connection) -> None:
+    """Canoniza ubicaciones existentes y deja el índice de sugerencias."""
+    canon: dict[str, str] = {
+        fila["normalizado"]: fila["nombre"]
+        for fila in con.execute("SELECT normalizado, nombre FROM ubicaciones")
+    }
+    filas = con.execute(
+        "SELECT ubicacion FROM equipos"
+        " WHERE ubicacion IS NOT NULL AND ubicacion<>''"
+    ).fetchall()
+    grupos: dict[str, list[str]] = {}
+    for fila in filas:
+        nombre = fila["ubicacion"].strip()
+        clave = normalizar_ubicacion(nombre)
+        if clave:
+            grupos.setdefault(clave, []).append(nombre)
+    for clave, nombres in grupos.items():
+        # El nombre canónico es el más corto: "2 penal" gana a
+        # "Segundos Penal" y a "Juzgado Segundo en Materia Penal".
+        nombre = min(nombres, key=lambda n: (len(n), n))
+        if clave in canon and len(canon[clave]) <= len(nombre):
+            nombre = canon[clave]
+        canon[clave] = nombre
+        con.execute(
+            "INSERT INTO ubicaciones(normalizado, nombre, actualizado_en)"
+            " VALUES(?,?,datetime('now'))"
+            " ON CONFLICT(normalizado) DO UPDATE SET nombre=excluded.nombre,"
+            " actualizado_en=excluded.actualizado_en",
+            (clave, nombre),
+        )
+        for variante in set(nombres):
+            con.execute(
+                "UPDATE equipos SET ubicacion=?, ubicacion_norm=?"
+                " WHERE ubicacion=?",
+                (nombre, clave, variante),
+            )
+    # Seriales: rellenar clave normalizada sin cambiar el serial visible.
+    for fila in con.execute("SELECT sn FROM equipos").fetchall():
+        con.execute(
+            "UPDATE equipos SET sn_norm=? WHERE sn=?",
+            (normalizar_serial(fila["sn"]), fila["sn"]),
+        )
 
 
 def inicializar(ruta: Path) -> None:
@@ -152,6 +254,8 @@ def inicializar(ruta: Path) -> None:
     try:
         con.executescript(ESQUEMA)
         _migrar_equipos(con)
+        _migrar_usuarios(con)
+        _reconstruir_ubicaciones(con)
         con.commit()
     finally:
         con.close()
@@ -168,15 +272,16 @@ def upsert_usuario(
     ).fetchone()
     if fila:
         con.execute(
-            "UPDATE users SET oid=?, email=?, name=?, role=?, last_login=?"
+            "UPDATE users SET oid=?, email=?, name=?, role=?, last_login=?,"
+            " display_name=COALESCE(NULLIF(display_name,''), ?)"
             " WHERE id=?",
-            (oid, email, nombre, rol, ts, fila["id"]),
+            (oid, email, nombre, rol, ts, nombre, fila["id"]),
         )
     else:
         con.execute(
-            "INSERT INTO users(oid, email, name, role, created_at, last_login)"
-            " VALUES(?,?,?,?,?,?)",
-            (oid, email, nombre, rol, ts, ts),
+            "INSERT INTO users(oid, email, name, display_name, role, created_at, last_login)"
+            " VALUES(?,?,?,?,?,?,?)",
+            (oid, email, nombre, nombre, rol, ts, ts),
         )
     con.commit()
     return con.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
@@ -194,6 +299,50 @@ def usuario_por_email(con: sqlite3.Connection, email: str) -> sqlite3.Row | None
 
 def contar_usuarios(con: sqlite3.Connection) -> int:
     return int(con.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"] or 0)
+
+
+def sedes_usuario(con: sqlite3.Connection, uid: int) -> list[str]:
+    return [
+        f["sede"] for f in con.execute(
+            "SELECT sede FROM user_sedes WHERE user_id=? ORDER BY sede", (uid,)
+        )
+    ]
+
+
+def asignar_sedes(con: sqlite3.Connection, uid: int, sedes: list[str]) -> None:
+    limpias = sorted({(s or "").strip() for s in sedes if (s or "").strip()})
+    con.execute("DELETE FROM user_sedes WHERE user_id=?", (uid,))
+    con.executemany(
+        "INSERT OR IGNORE INTO user_sedes(user_id, sede) VALUES(?,?)",
+        [(uid, s) for s in limpias],
+    )
+    con.commit()
+
+
+def actualizar_display_name(con: sqlite3.Connection, uid: int, nombre: str) -> None:
+    con.execute(
+        "UPDATE users SET display_name=? WHERE id=?",
+        ((nombre or "").strip()[:120], uid),
+    )
+    con.commit()
+
+
+def listar_usuarios(con: sqlite3.Connection) -> list[dict[str, Any]]:
+    filas = con.execute(
+        "SELECT id, email, name, display_name, role, created_at, last_login"
+        " FROM users ORDER BY email"
+    ).fetchall()
+    return [
+        dict(f, sedes=sedes_usuario(con, int(f["id"]))) for f in filas
+    ]
+
+
+def listar_sedes(con: sqlite3.Connection) -> list[str]:
+    filas = con.execute(
+        "SELECT DISTINCT sede FROM equipos"
+        " WHERE sede IS NOT NULL AND sede<>'' ORDER BY sede"
+    ).fetchall()
+    return [f["sede"] for f in filas]
 
 
 def auditar(
@@ -334,8 +483,17 @@ def borrar_job(con: sqlite3.Connection, job_id: str, owner_id: int) -> bool:
     cur = con.execute(
         "DELETE FROM jobs WHERE id=? AND owner_id=?", (job_id, owner_id)
     )
+    con.execute("DELETE FROM cobertura_escaneos WHERE job_id=?", (job_id,))
+    con.execute("DELETE FROM job_pages WHERE job_id=?", (job_id,))
     con.commit()
     return cur.rowcount > 0
+
+
+def borrar_job_por_id(con: sqlite3.Connection, job_id: str) -> None:
+    con.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    con.execute("DELETE FROM cobertura_escaneos WHERE job_id=?", (job_id,))
+    con.execute("DELETE FROM job_pages WHERE job_id=?", (job_id,))
+    con.commit()
 
 
 def promedio_segundos_por_pagina(con: sqlite3.Connection) -> float:
@@ -413,12 +571,173 @@ def jobs_vencidos(con: sqlite3.Connection, dias: int) -> list[sqlite3.Row]:
     ).fetchall()
 
 
-def borrar_job_por_id(con: sqlite3.Connection, job_id: str) -> None:
-    con.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+def periodo_de(fecha_iso: str | None = None) -> str:
+    """Periodo YYYY-MM en hora local; las fechas en BD están en UTC."""
+    if fecha_iso:
+        try:
+            fecha = datetime.fromisoformat(fecha_iso.replace("Z", "+00:00"))
+        except ValueError:
+            fecha = datetime.now(timezone.utc)
+    else:
+        fecha = datetime.now(timezone.utc)
+    if fecha.tzinfo is None:
+        fecha = fecha.replace(tzinfo=timezone.utc)
+    return fecha.astimezone(_TZ_CUOTA).strftime("%Y-%m")
+
+
+def registrar_cobertura_job(con: sqlite3.Connection, job_id: str) -> int:
+    """Guarda seriales distintos del job en la cobertura mensual.
+
+    Solo cuenta seriales que existen en el inventario (para poder compararlos
+    con los equipos esperados). Los no inventariados se muestran aparte.
+    """
+    job = con.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        return 0
+    periodo = periodo_de(job["finished_at"] or job["created_at"])
+    escaneado_en = job["finished_at"] or ahora()
+    filas = con.execute(
+        "SELECT jp.sn AS sn, e.sede AS sede"
+        " FROM job_pages jp JOIN equipos e ON e.sn=jp.sn"
+        " WHERE jp.job_id=? AND jp.sn IS NOT NULL AND jp.sn<>''"
+        " AND COALESCE(jp.estado,'')<>'DESCARTADA'"
+        " GROUP BY jp.sn, e.sede",
+        (job_id,),
+    ).fetchall()
+    nuevos = 0
+    for fila in filas:
+        sn, sede = fila["sn"], fila["sede"]
+        if not sede:
+            continue
+        previo = con.execute(
+            "SELECT id FROM cobertura_escaneos"
+            " WHERE periodo=? AND sede=? AND sn=? AND excluido=0"
+            " ORDER BY id LIMIT 1",
+            (periodo, sede, sn),
+        ).fetchone()
+        cur = con.execute(
+            "INSERT OR IGNORE INTO cobertura_escaneos"
+            "(periodo, sede, sn, job_id, owner_id, escaneado_en,"
+            " duplicado, duplicado_de)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            (periodo, sede, sn, job_id, int(job["owner_id"]), escaneado_en,
+             1 if previo else 0, previo["id"] if previo else None),
+        )
+        nuevos += 1 if cur.rowcount else 0
+    con.commit()
+    return nuevos
+
+
+def backfill_cobertura(con: sqlite3.Connection, periodo: str) -> None:
+    """Reconstruye cobertura de jobs terminados del periodo (una vez por mes).
+
+    Si una sede/mes fue reiniciada, no se rellenan los jobs viejos: el administrador
+    quiere volver a procesar desde cero. Los jobs nuevos se registran al terminar.
+    """
+    ya = con.execute(
+        "SELECT 1 FROM cobertura_meta WHERE periodo=?", (periodo,)
+    ).fetchone()
+    if ya:
+        return
+    jobs = con.execute(
+        "SELECT id, finished_at FROM jobs WHERE status='done'"
+        " AND finished_at IS NOT NULL ORDER BY finished_at"
+    ).fetchall()
+    for job in jobs:
+        if periodo_de(job["finished_at"]) != periodo:
+            continue
+        reset = con.execute(
+            "SELECT 1 FROM cobertura_resets r"
+            " JOIN equipos e ON e.sede=r.sede"
+            " JOIN job_pages jp ON jp.sn=e.sn"
+            " WHERE r.periodo=? AND jp.job_id=? LIMIT 1",
+            (periodo, job["id"]),
+        ).fetchone()
+        if reset:
+            continue
+        registrar_cobertura_job(con, job["id"])
+    con.execute(
+        "INSERT OR IGNORE INTO cobertura_meta(periodo, backfill_en)"
+        " VALUES(?,?)", (periodo, ahora()),
+    )
     con.commit()
 
 
-# ---------------------------------------------------------------- administración
+def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str, Any]:
+    esperados = con.execute(
+        "SELECT sn, marca, modelo, ubicacion, piso, estatus"
+        " FROM equipos WHERE sede=? ORDER BY ubicacion, sn",
+        (sede,),
+    ).fetchall()
+    escaneos = con.execute(
+        "SELECT c.*, COALESCE(u.display_name,u.name,u.email) AS usuario,"
+        " j.filename AS documento"
+        " FROM cobertura_escaneos c"
+        " LEFT JOIN users u ON u.id=c.owner_id"
+        " LEFT JOIN jobs j ON j.id=c.job_id"
+        " WHERE c.periodo=? AND c.sede=? AND c.excluido=0"
+        " ORDER BY c.escaneado_en DESC",
+        (periodo, sede),
+    ).fetchall()
+    escaneados = {f["sn"] for f in escaneos}
+    faltantes = [
+        dict(f) for f in esperados if f["sn"] not in escaneados
+    ]
+    duplicados = [dict(f) for f in escaneos if f["duplicado"]]
+    return {
+        "sede": sede,
+        "periodo": periodo,
+        "esperados": len(esperados),
+        "escaneados": len(escaneados),
+        "faltantes": faltantes,
+        "duplicados": duplicados,
+        "detalle_escaneos": [dict(f) for f in escaneos],
+    }
+
+
+def excluir_cobertura(con: sqlite3.Connection, cid: int, motivo: str) -> bool:
+    cur = con.execute(
+        "UPDATE cobertura_escaneos SET excluido=1, motivo_exclusion=?"
+        " WHERE id=?",
+        ((motivo or "Corrección administrativa")[:300], cid),
+    )
+    con.commit()
+    return cur.rowcount > 0
+
+
+def reiniciar_cobertura(con: sqlite3.Connection, periodo: str, sede: str) -> int:
+    cur = con.execute(
+        "DELETE FROM cobertura_escaneos WHERE periodo=? AND sede=?",
+        (periodo, sede),
+    )
+    con.execute(
+        "INSERT OR REPLACE INTO cobertura_resets(periodo, sede, reset_en)"
+        " VALUES(?,?,?)", (periodo, sede, ahora()),
+    )
+    con.commit()
+    return int(cur.rowcount or 0)
+
+
+def cobertura_para_usuario(
+    con: sqlite3.Connection, uid: int, periodo: str, sede: str | None = None
+) -> dict[str, Any]:
+    sedes = sedes_usuario(con, uid)
+    if sede:
+        if sede not in sedes:
+            raise PermissionError("Sede no asignada al usuario.")
+        sedes = [sede]
+    if not sedes:
+        return {"periodo": periodo, "sedes": [], "faltantes": 0}
+    backfill_cobertura(con, periodo)
+    datos = [cobertura_sede(con, s, periodo) for s in sedes]
+    return {
+        "periodo": periodo,
+        "sedes": datos,
+        "esperados": sum(d["esperados"] for d in datos),
+        "escaneados": sum(d["escaneados"] for d in datos),
+        "faltantes": sum(len(d["faltantes"]) for d in datos),
+        "duplicados": sum(len(d["duplicados"]) for d in datos),
+    }
 def listar_jobs_admin(con: sqlite3.Connection, limite: int = 60) -> list[sqlite3.Row]:
     return con.execute(
         "SELECT j.*, u.name AS owner_name FROM jobs j"
@@ -518,13 +837,68 @@ CAMPOS_EQUIPO = ("marca", "modelo", "tipo", "sede", "zona", "domicilio",
                  "origen_hoja")
 
 
+def canonicalizar_ubicacion(con: sqlite3.Connection, ubicacion: str) -> str:
+    nombre = re.sub(r"\s+", " ", str(ubicacion or "")).strip()
+    if not nombre:
+        return ""
+    clave = normalizar_ubicacion(nombre)
+    fila = con.execute(
+        "SELECT nombre FROM ubicaciones WHERE normalizado=?", (clave,)
+    ).fetchone()
+    if fila:
+        if len(nombre) < len(fila["nombre"]):
+            con.execute(
+                "UPDATE ubicaciones SET nombre=?, actualizado_en=datetime('now')"
+                " WHERE normalizado=?", (nombre, clave),
+            )
+            con.execute(
+                "UPDATE equipos SET ubicacion=? WHERE ubicacion_norm=?",
+                (nombre, clave),
+            )
+            return nombre
+        return fila["nombre"]
+    con.execute(
+        "INSERT OR IGNORE INTO ubicaciones(normalizado, nombre, actualizado_en)"
+        " VALUES(?,?,datetime('now'))",
+        (clave, nombre),
+    )
+    return nombre
+
+
+def sugerencias_ubicacion(con: sqlite3.Connection, q: str = "") -> list[str]:
+    q = (q or "").strip()
+    filas = con.execute(
+        "SELECT nombre FROM ubicaciones ORDER BY nombre"
+    ).fetchall()
+    if not q:
+        return [f["nombre"] for f in filas[:30]]
+    clave = normalizar_ubicacion(q)
+    qlow = q.lower()
+    out = []
+    for f in filas:
+        nombre = f["nombre"]
+        if qlow in nombre.lower() or (clave and clave in normalizar_ubicacion(nombre)):
+            out.append(nombre)
+    return out[:30]
+
+
 def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool, str]:
-    sn = (sn or "").strip().upper()
+    sn = normalizar_serial(sn)
     if not sn:
         raise ValueError("serial vacío")
+    # Evita duplicados lógicos Mx3.../MX3.../MX3...O...: reutiliza el serial
+    # existente en lugar de insertar una segunda fila.
+    existente = con.execute(
+        "SELECT sn FROM equipos WHERE sn_norm=?", (sn,)
+    ).fetchone()
+    if existente:
+        sn = existente["sn"]
     existia = con.execute("SELECT 1 FROM equipos WHERE sn=?", (sn,)).fetchone() is not None
-    cols = ["sn"] + [c for c in CAMPOS_EQUIPO if c in campos]
-    vals = [sn] + [("" if campos.get(c) is None else str(campos.get(c))) for c in cols[1:]]
+    if "ubicacion" in campos:
+        campos["ubicacion"] = canonicalizar_ubicacion(con, campos["ubicacion"])
+    cols = ["sn", "sn_norm", "ubicacion_norm"] + [c for c in CAMPOS_EQUIPO if c in campos]
+    vals = [sn, sn, normalizar_ubicacion(campos.get("ubicacion", ""))]
+    vals += [("" if campos.get(c) is None else str(campos.get(c))) for c in cols[3:]]
     sets = ", ".join(f"{c}=excluded.{c}" for c in cols[1:])
     sufijo = (f" ON CONFLICT(sn) DO UPDATE SET {sets},"
               " actualizado_en=datetime('now')" if sets else "")

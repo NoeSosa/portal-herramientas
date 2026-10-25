@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from panel_web.app import db  # noqa: E402
+from panel_web.app.normalizacion import normalizar_ubicacion  # noqa: E402
 
 
 class AislamientoTest(unittest.TestCase):
@@ -114,6 +115,79 @@ class AislamientoTest(unittest.TestCase):
         self.assertEqual(stats["pages_ahead"], 8)
         self.assertEqual(stats["posicion"], 1)
         self.assertEqual(stats["eta_seconds"], 130)
+
+
+class CoberturaTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ruta = Path(self.tmp.name) / "panel.db"
+        db.inicializar(self.ruta)
+        self.con = db.conectar(self.ruta)
+        self.user = db.upsert_usuario(
+            self.con, "oid-cov", "cov@empresa.com", "Cobertura", "user"
+        )
+        self.uid = int(self.user["id"])
+        db.asignar_sedes(self.con, self.uid, ["Reynosa"])
+
+    def tearDown(self) -> None:
+        self.con.close()
+        self.tmp.cleanup()
+
+    def job(self, job_id: str, serial: str, estado: str = "OK") -> None:
+        db.crear_job(
+            self.con, job_id=job_id, owner_id=self.uid,
+            owner_email=self.user["email"], filename=f"{job_id}.pdf",
+            stored_name=f"{job_id}.pdf", size=100, pages=1,
+            client_ip="127.0.0.1",
+        )
+        db.upsert_pagina(self.con, job_id, 1, sn=serial, estado=estado,
+                         texto="x", ts=1)
+        db.finalizar_job(self.con, job_id, f"/tmp/{job_id}.zip", 1)
+        db.registrar_cobertura_job(self.con, job_id)
+
+    def test_ubicacion_y_serial_no_duplican_variantes(self) -> None:
+        db.upsert_equipo(self.con, "Mx3cv6Q0DZ", sede="Reynosa",
+                         ubicacion="Segundos Penal")
+        db.upsert_equipo(self.con, "MX3CV6QODZ", sede="Reynosa",
+                         ubicacion="Juzgado Segundo en Materia Penal")
+        self.assertEqual(db.contar_equipos(self.con), 1)
+        fila = db.listar_equipos(self.con)[0]
+        self.assertEqual(normalizar_ubicacion(fila["ubicacion"]), "2 penal")
+
+    def test_faltantes_y_cobertura(self) -> None:
+        db.upsert_equipo(self.con, "AAA111", sede="Reynosa", marca="HP")
+        db.upsert_equipo(self.con, "BBB222", sede="Reynosa", marca="HP")
+        self.job("j1", "AAA111")
+        datos = db.cobertura_para_usuario(self.con, self.uid, db.periodo_de())
+        self.assertEqual(datos["esperados"], 2)
+        self.assertEqual(datos["escaneados"], 1)
+        self.assertEqual([f["sn"] for f in datos["sedes"][0]["faltantes"]], ["BBB222"])
+
+        # El mismo serial en otro job se marca duplicado y no aumenta cobertura.
+        self.job("j2", "AAA111")
+        datos = db.cobertura_para_usuario(self.con, self.uid, db.periodo_de())
+        self.assertEqual(datos["escaneados"], 1)
+        self.assertEqual(datos["duplicados"], 1)
+
+    def test_nombre_personalizado_sobrevive_al_login(self) -> None:
+        db.actualizar_display_name(self.con, self.uid, "Nombre propio")
+        db.upsert_usuario(self.con, "oid-cov", self.user["email"], "Nombre Entra", "user")
+        self.assertEqual(db.usuario_por_id(self.con, self.uid)["display_name"], "Nombre propio")
+
+    def test_reset_no_reinyecta_jobs_viejos(self) -> None:
+        db.upsert_equipo(self.con, "AAA111", sede="Reynosa")
+        db.upsert_equipo(self.con, "BBB222", sede="Reynosa")
+        self.job("j1", "AAA111")
+        periodo = db.periodo_de()
+        self.job("j2", "BBB222")
+        datos = db.cobertura_para_usuario(self.con, self.uid, periodo)
+        self.assertEqual(datos["escaneados"], 2)
+        db.reiniciar_cobertura(self.con, periodo, "Reynosa")
+        datos = db.cobertura_para_usuario(self.con, self.uid, periodo)
+        self.assertEqual(datos["escaneados"], 0)
+        self.job("j3", "AAA111")
+        datos = db.cobertura_para_usuario(self.con, self.uid, periodo)
+        self.assertEqual(datos["escaneados"], 1)
 
 
 if __name__ == "__main__":

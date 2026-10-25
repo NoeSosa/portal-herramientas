@@ -7,6 +7,14 @@ const estado = {
   cargando: false,
   subiendo: false,
   timer: null,
+  sedes: [],
+  role: "user",
+  nombre: "",
+  cobertura: null,
+  coberturaPeriodo: "",
+  coberturaSede: "",
+  jobsVistos: new Map(),
+  jobsInicializado: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -139,6 +147,14 @@ function aplicarJob(nodo, job) {
     descargar.removeAttribute("href");
   }
 
+  const resumen = nodo.querySelector(".summary");
+  if (job.status === "done") {
+    resumen.hidden = false;
+    resumen.addEventListener("click", () => abrirResumen(job));
+  } else {
+    resumen.hidden = true;
+  }
+
   const borrar = nodo.querySelector(".delete");
   borrar.disabled = job.status === "running";
   borrar.addEventListener("click", () => borrarJob(job));
@@ -146,22 +162,85 @@ function aplicarJob(nodo, job) {
   return nodo;
 }
 
+async function abrirResumen(job) {
+  $("resumen-nombre").textContent = job.filename;
+  $("resumen-texto").textContent = "Cargando resultado…";
+  $("resumen-aviso").hidden = true;
+  $("resumen-documentos").textContent = "";
+  $("resultado-dialog").showModal();
+  try {
+    const d = await api(`/api/jobs/${encodeURIComponent(job.id)}/resultado`);
+    const r = d.resumen || {};
+    const estados = r.por_estado || {};
+    $("resumen-texto").textContent =
+      `${job.pages} páginas · ${r.seriales || 0} seriales · ` +
+      `${estados.OK || 0} OK · ${estados.POR_VERIFICAR || 0} por verificar · ` +
+      `${estados.DESCARTADA || 0} descartadas`;
+    const noInv = r.no_inventario || [];
+    $("resumen-aviso").hidden = !noInv.length;
+    $("resumen-aviso").textContent = noInv.length
+      ? `${noInv.length} serial(es) no están en el inventario: ${noInv.join(", ")}`
+      : "";
+    const body = $("resumen-documentos");
+    for (const doc of d.documentos || []) {
+      const tr = document.createElement("tr");
+      const tdSerial = document.createElement("td");
+      tdSerial.textContent = doc.serial || "—";
+      const tdEstado = document.createElement("td");
+      tdEstado.textContent = doc.estado;
+      const tdTam = document.createElement("td");
+      tdTam.textContent = formatoBytes(doc.bytes);
+      const tdAcc = document.createElement("td");
+      const a = document.createElement("a");
+      a.href = `/api/jobs/${encodeURIComponent(job.id)}/documento?ruta=${encodeURIComponent(doc.ruta)}`;
+      a.textContent = "Abrir";
+      a.className = "action";
+      tdAcc.appendChild(a);
+      tr.append(tdSerial, tdEstado, tdTam, tdAcc);
+      body.appendChild(tr);
+    }
+    if (!(d.documentos || []).length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "admin-empty";
+      td.textContent = "Sin documentos en el ZIP.";
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+  } catch (error) {
+    $("resumen-texto").textContent = error.message;
+  }
+}
+
 function renderJobs() {
   const contenedor = $("jobs");
   const vacio = $("empty-state");
   const contador = $("jobs-count");
   const plantilla = $("job-template");
+  const q = ($("job-search")?.value || "").trim().toLowerCase();
+  const lista = q
+    ? estado.jobs.filter((job) =>
+        `${job.filename} ${etiquetaEstado(job.status)}`.toLowerCase().includes(q))
+    : estado.jobs;
 
   contenedor.textContent = "";
-  contador.textContent =
-    `${estado.jobs.length} DOCUMENTO${estado.jobs.length === 1 ? "" : "S"}`;
+  contador.textContent = q
+    ? `${lista.length} DE ${estado.jobs.length}`
+    : `${estado.jobs.length} DOCUMENTO${estado.jobs.length === 1 ? "" : "S"}`;
 
   if (!estado.jobs.length) {
     vacio.hidden = false;
+    vacio.querySelector("h3").textContent = "Sin documentos en esta sesión.";
+    return;
+  }
+  if (!lista.length) {
+    vacio.hidden = false;
+    vacio.querySelector("h3").textContent = "Sin coincidencias.";
     return;
   }
   vacio.hidden = true;
-  for (const job of estado.jobs) {
+  for (const job of lista) {
     const nodo = plantilla.content.firstElementChild.cloneNode(true);
     contenedor.appendChild(aplicarJob(nodo, job));
   }
@@ -192,6 +271,7 @@ async function cargarJobs(silencioso = false) {
     const datos = await api("/api/jobs");
     estado.jobs = datos.jobs || [];
     estado.queue = datos.queue || null;
+    notificarCambiosJobs();
     renderJobs();
     renderCola();
   } catch (error) {
@@ -308,17 +388,266 @@ function conectarSubida() {
   zona.addEventListener("drop", (e) => subirArchivos(e.dataTransfer.files));
 }
 
+function periodoLocal() {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function toast(mensaje, tipo = "info") {
+  const cont = $("toasts");
+  if (!cont) return;
+  const nodo = document.createElement("div");
+  nodo.className = `toast ${tipo}`;
+  const texto = document.createElement("span");
+  texto.textContent = mensaje;
+  const cerrar = document.createElement("button");
+  cerrar.type = "button";
+  cerrar.className = "toast-close";
+  cerrar.setAttribute("aria-label", "Cerrar aviso");
+  cerrar.textContent = "×";
+  cerrar.addEventListener("click", () => nodo.remove());
+  nodo.append(texto, cerrar);
+  cont.appendChild(nodo);
+  window.setTimeout(() => nodo.remove(), tipo === "error" ? 9000 : 5000);
+}
+
+function notificarCambiosJobs() {
+  if (!estado.jobsInicializado) {
+    for (const job of estado.jobs) estado.jobsVistos.set(job.id, job.status);
+    estado.jobsInicializado = true;
+    return;
+  }
+  const vistos = new Set();
+  for (const job of estado.jobs) {
+    vistos.add(job.id);
+    const anterior = estado.jobsVistos.get(job.id);
+    if (anterior !== job.status) {
+      if (job.status === "done") {
+        toast(`Documento listo: ${job.filename}`, "ok");
+      } else if (job.status === "error") {
+        toast(`Error en ${job.filename}: ${job.error || "revisa el documento"}`, "error");
+      }
+    }
+    estado.jobsVistos.set(job.id, job.status);
+  }
+  for (const id of [...estado.jobsVistos.keys()]) {
+    if (!vistos.has(id)) estado.jobsVistos.delete(id);
+  }
+}
+
+async function excluirCobertura(id) {
+  const motivo = window.prompt("Motivo para excluir este escaneo del conteo:", "Error de escaneo");
+  if (motivo === null) return;
+  try {
+    await api("/api/admin/cobertura/excluir", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id, motivo}),
+    });
+    toast("Escaneo excluido del conteo.", "ok");
+    await cargarCobertura(true);
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function reiniciarCobertura() {
+  const periodo = $("cov-periodo").value;
+  const sede = $("cov-sede").value;
+  if (!sede) {
+    toast("Elige una sede concreta para reiniciar la cobertura.", "error");
+    return;
+  }
+  const tecleado = window.prompt(
+    `Vas a reiniciar la cobertura de ${sede} en ${periodo}. Escribe REINICIAR:`,
+    "",
+  );
+  if ((tecleado || "").trim().toUpperCase() !== "REINICIAR") return;
+  try {
+    await api("/api/admin/cobertura/reiniciar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({periodo, sede, confirm: "REINICIAR"}),
+    });
+    toast("Cobertura reiniciada; los jobs viejos no se vuelven a contar.", "ok");
+    await cargarCobertura(true);
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function abrirPerfil() {
+  $("perfil-name").value = estado.nombre || "";
+  setEstadoPerfil("");
+  $("perfil-dialog").showModal();
+}
+
+function setEstadoPerfil(texto) {
+  const nodo = $("perfil-status");
+  if (!nodo) return;
+  nodo.textContent = texto;
+  nodo.className = "form-status" + (texto ? " error" : "");
+}
+
+async function guardarPerfil(evento) {
+  evento.preventDefault();
+  const nombre = $("perfil-name").value.trim();
+  if (!nombre) return;
+  try {
+    const d = await api("/api/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nombre }),
+    });
+    estado.nombre = d.name;
+    document.querySelectorAll("[data-user-name]").forEach((n) => {
+      n.textContent = d.name;
+    });
+    $("perfil-dialog").close();
+    toast("Nombre actualizado.", "ok");
+  } catch (error) {
+    setEstadoPerfil(error.message);
+  }
+}
+
+async function cargarCobertura(silencioso = false) {
+  if (!estado.sedes.length) {
+    $("cov-empty").hidden = false;
+    $("cov-content").hidden = true;
+    return;
+  }
+  $("cov-empty").hidden = true;
+  $("cov-content").hidden = false;
+  $("cov-reset").hidden = estado.role !== "admin";
+  const periodo = $("cov-periodo").value || periodoLocal();
+  const select = $("cov-sede");
+  const seleccion = select.value || estado.sedes[0];
+  const previas = [...select.options].map((o) => o.value).filter(Boolean);
+  if (previas.join("|") !== estado.sedes.join("|")) {
+    select.textContent = "";
+    for (const sede of estado.sedes) select.appendChild(new Option(sede, sede));
+    if (estado.role === "admin") select.appendChild(new Option("Todas las sedes", ""));
+    select.value = estado.sedes.includes(seleccion) ? seleccion : estado.sedes[0];
+  }
+  estado.coberturaPeriodo = periodo;
+  estado.coberturaSede = select.value;
+  try {
+    const q = new URLSearchParams({ periodo });
+    if (select.value) q.set("sede", select.value);
+    const d = await api(`/api/cobertura?${q.toString()}`);
+    estado.cobertura = d;
+    renderCobertura();
+    if (!silencioso) toast("Cobertura actualizada.", "info");
+  } catch (error) {
+    if (!silencioso) toast(error.message, "error");
+  }
+}
+
+function renderCobertura() {
+  const datos = estado.cobertura;
+  if (!datos) return;
+  const sedes = datos.sedes || [];
+  const faltantes = sedes.flatMap((s) =>
+    (s.faltantes || []).map((e) => ({ ...e, sede: s.sede })));
+  const escaneados = sedes.flatMap((s) =>
+    (s.detalle_escaneos || []).map((e) => ({ ...e, sede: s.sede })));
+  const q = ($("cov-buscar")?.value || "").trim().toLowerCase();
+  const filtro = (fila) => !q || [
+    fila.sn, fila.marca, fila.modelo, fila.ubicacion, fila.piso, fila.estatus,
+    fila.usuario, fila.documento, fila.sede,
+  ].filter(Boolean).join(" ").toLowerCase().includes(q);
+
+  $("cov-esperados").textContent = datos.esperados ?? 0;
+  $("cov-escaneados").textContent = datos.escaneados ?? 0;
+  $("cov-faltantes").textContent = datos.faltantes ?? 0;
+  $("cov-duplicados").textContent = datos.duplicados ?? 0;
+  $("cov-sede-nombre").textContent = sedes.map((s) => s.sede).join(" · ") || "—";
+  $("cov-faltantes-count").textContent = String(faltantes.filter(filtro).length);
+
+  const cuerpoF = $("cov-faltantes-body");
+  cuerpoF.textContent = "";
+  const visiblesF = faltantes.filter(filtro);
+  if (!visiblesF.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 7;
+    td.className = "admin-empty";
+    td.textContent = q ? "Sin coincidencias." : "No hay faltantes en este mes.";
+    tr.appendChild(td);
+    cuerpoF.appendChild(tr);
+  } else {
+    for (const e of visiblesF) {
+      const tr = document.createElement("tr");
+      for (const v of [e.sede, e.sn, e.marca, e.modelo, e.ubicacion, e.piso, e.estatus]) {
+        const td = document.createElement("td");
+        td.textContent = v || "—";
+        tr.appendChild(td);
+      }
+      cuerpoF.appendChild(tr);
+    }
+  }
+
+  document.querySelectorAll(".cov-admin-col").forEach((n) => {
+    n.hidden = estado.role !== "admin";
+  });
+  const cuerpoE = $("cov-escaneados-body");
+  cuerpoE.textContent = "";
+  const visiblesE = escaneados
+    .filter(filtro)
+    .sort((a, b) => Number(b.duplicado) - Number(a.duplicado));
+  if (!visiblesE.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = estado.role === "admin" ? 6 : 5;
+    td.className = "admin-empty";
+    td.textContent = "Sin escaneos registrados.";
+    tr.appendChild(td);
+    cuerpoE.appendChild(tr);
+  } else {
+    for (const e of visiblesE) {
+      const tr = document.createElement("tr");
+      const estadoTexto = e.duplicado ? "DUPLICADO" : "OK";
+      for (const v of [
+        e.sn, e.escaneado_en ? e.escaneado_en.replace("T", " ").slice(0, 16) : "—",
+        e.usuario || "—", e.documento || "—", estadoTexto,
+      ]) {
+        const td = document.createElement("td");
+        td.textContent = v;
+        tr.appendChild(td);
+      }
+      if (estado.role === "admin") {
+        const td = document.createElement("td");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-text danger";
+        btn.textContent = "Excluir";
+        btn.addEventListener("click", () => excluirCobertura(e.id));
+        td.appendChild(btn);
+        tr.appendChild(td);
+      }
+      cuerpoE.appendChild(tr);
+    }
+  }
+}
+
 async function iniciar() {
   try {
     const me = await api("/api/me");
     estado.csrf = me.csrf;
+    estado.sedes = me.sedes || [];
+    estado.role = me.role || "user";
+    estado.nombre = me.name || me.email;
     document.querySelectorAll("[data-user-email]").forEach((nodo) => {
       nodo.textContent = me.email;
+    });
+    document.querySelectorAll("[data-user-name]").forEach((nodo) => {
+      nodo.textContent = estado.nombre;
     });
     const navAdmin = $("nav-admin");
     if (navAdmin) navAdmin.hidden = me.role !== "admin";
     $("upload-hint").textContent =
-      `PDF · máx. ${me.limits.max_upload_mb} MB · ${me.limits.max_pages} págs.`;
+      `PDF · máx. ${me.limits.max_upload_mb} MB · ${me.limits.max_pages} págs.` +
+      ` · ${me.limits.max_queued_jobs} documentos a la vez`;
   } catch (error) {
     mostrarEstado(error.message, "error");
     return;
@@ -326,7 +655,20 @@ async function iniciar() {
 
   conectarSubida();
   $("btn-refresh").addEventListener("click", () => cargarJobs(false));
+  $("job-search").addEventListener("input", renderJobs);
+  $("btn-perfil").addEventListener("click", abrirPerfil);
+  $("perfil-cancel").addEventListener("click", () => $("perfil-dialog").close());
+  $("resumen-cerrar").addEventListener("click", () => $("resultado-dialog").close());
+  $("perfil-form").addEventListener("submit", guardarPerfil);
+  $("cov-refresh").addEventListener("click", () => cargarCobertura(true));
+  $("cov-periodo").addEventListener("change", () => cargarCobertura(true));
+  $("cov-sede").addEventListener("change", () => cargarCobertura(true));
+  $("cov-buscar").addEventListener("input", renderCobertura);
+  $("cov-reset").addEventListener("click", reiniciarCobertura);
+  const periodo = $("cov-periodo");
+  if (!periodo.value) periodo.value = periodoLocal();
   await cargarJobs(false);
+  await cargarCobertura(true);
 
   estado.timer = window.setInterval(() => {
     if (document.hidden) return;
@@ -334,6 +676,7 @@ async function iniciar() {
     // No reemplazar la tabla mientras el usuario está enfocando una acción.
     if (activo && activo.closest && activo.closest("#jobs")) return;
     cargarJobs(true);
+    if (new Date().getSeconds() % 6 === 0) cargarCobertura(true);
   }, 3000);
 }
 

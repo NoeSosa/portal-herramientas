@@ -155,6 +155,10 @@ volver a iniciar sesión. Desde ahí se ve:
 - **Inspección OCR integrada**: una sola hoja con imagen, texto completo y cajas
   de lo detectado. Se puede seguir en vivo, ver la última hoja de cada lector o
   navegar el histórico con las flechas y el mapa de páginas.
+- **Usuarios y sedes**: el administrador asigna una o varias sedes a cada
+  usuario; cada usuario puede cambiar su nombre visible.
+- **Cobertura mensual**: faltantes por sede con serial, marca, modelo,
+  ubicación, piso y estatus; escaneados y duplicados del mes.
 - Inventario editable: importar Excel, alta/edición/baja de seriales, filtros
   por sede/marca/estatus y exportación.
 - Resumen de sedes con número de equipos, marcas y zonas.

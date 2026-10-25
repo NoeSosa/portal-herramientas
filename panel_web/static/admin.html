@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261020c">
-  <link rel="stylesheet" href="/static/admin.css?v=20261025b">
+  <link rel="stylesheet" href="/static/style.css?v=20261025f">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025f">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -211,7 +211,10 @@
         <label>Sede<input id="inv-sede" name="sede"></label>
         <label>Zona<input id="inv-zona" name="zona"></label>
         <label>Domicilio<input id="inv-domicilio" name="domicilio"></label>
-        <label>Ubicación del equipo<input id="inv-ubicacion" name="ubicacion"></label>
+        <label>Ubicación del equipo
+          <input id="inv-ubicacion" name="ubicacion" list="inv-ubicaciones" autocomplete="off">
+          <datalist id="inv-ubicaciones"></datalist>
+        </label>
         <label>Piso<input id="inv-piso" name="piso" placeholder="editable después"></label>
         <label>Estatus<input id="inv-estatus" name="estatus"></label>
         <label>Contador inicial<input id="inv-contador" name="contador_inicial"></label>
@@ -221,6 +224,9 @@
           <span class="mono-label" id="inv-form-status"></span>
         </div>
       </form>
+      <p class="inventory-hint" id="inv-ubicacion-hint">
+        Escribe la ubicación y elige una sugerencia para evitar duplicados.
+      </p>
 
       <div class="inventory-filters">
         <input type="search" id="inv-q" placeholder="serial, marca, modelo, sede, ubicación o piso…">
@@ -264,6 +270,23 @@
       </div>
     </section>
 
+    <section class="admin-section" id="usuarios" aria-labelledby="usuarios-title">
+      <div class="section-head">
+        <div class="section-label">
+          <span class="section-num">04</span>
+          <span class="mono-label" id="usuarios-title">USUARIOS Y SEDES</span>
+        </div>
+        <span class="mono-label" id="usuarios-status">—</span>
+      </div>
+      <p class="admin-hint">
+        Asigna una o varias sedes por usuario. La cobertura mensual y los
+        faltantes se calculan para las sedes asignadas.
+      </p>
+      <div id="usuarios-list" class="users-list">
+        <p class="admin-empty">Cargando usuarios…</p>
+      </div>
+    </section>
+
     <footer class="workspace-foot">
       <span>MAINBIT · CONTROL</span>
       <span>ENTRA ID / SSO</span>
@@ -271,6 +294,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261025c" defer></script>
+  <script src="/static/admin.js?v=20261025f" defer></script>
 </body>
 </html>
