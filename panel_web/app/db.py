@@ -665,8 +665,8 @@ def backfill_cobertura(con: sqlite3.Connection, periodo: str) -> None:
 
 def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str, Any]:
     esperados = con.execute(
-        "SELECT sn, marca, modelo, ubicacion, piso, estatus"
-        " FROM equipos WHERE sede=? ORDER BY ubicacion, sn",
+        "SELECT sn, marca, modelo, zona, domicilio, ubicacion, piso,"
+        " estatus, contador_inicial FROM equipos WHERE sede=? ORDER BY ubicacion, sn",
         (sede,),
     ).fetchall()
     escaneos = con.execute(
@@ -680,9 +680,12 @@ def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str
         (periodo, sede),
     ).fetchall()
     escaneados = {f["sn"] for f in escaneos}
-    faltantes = [
-        dict(f) for f in esperados if f["sn"] not in escaneados
-    ]
+    equipos = []
+    for f in esperados:
+        fila = dict(f)
+        fila["escaneado"] = fila["sn"] in escaneados
+        equipos.append(fila)
+    faltantes = [f for f in equipos if not f["escaneado"]]
     duplicados = [dict(f) for f in escaneos if f["duplicado"]]
     return {
         "sede": sede,
@@ -690,6 +693,7 @@ def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str
         "esperados": len(esperados),
         "escaneados": len(escaneados),
         "faltantes": faltantes,
+        "equipos": equipos,
         "duplicados": duplicados,
         "detalle_escaneos": [dict(f) for f in escaneos],
     }

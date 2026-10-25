@@ -162,6 +162,113 @@ function aplicarJob(nodo, job) {
   return nodo;
 }
 
+function claseEstatus(estatus) {
+  const e = String(estatus || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!e) return "";
+  if (e.includes("operacion")) return "";
+  if (e.includes("baja") || e.includes("danad") || e.includes("dana")) return "estado-baja";
+  return "estado-alerta";
+}
+
+function setEqStatus(texto) {
+  const nodo = $("eq-status");
+  nodo.textContent = texto || "";
+  nodo.className = "form-status" + (texto ? " error" : "");
+}
+
+async function cargarUbicacionesUsuario(q = "") {
+  try {
+    const d = await api(`/api/ubicaciones?q=${encodeURIComponent(q)}`);
+    const lista = $("eq-ubicaciones");
+    lista.textContent = "";
+    for (const nombre of d.ubicaciones || []) {
+      const option = document.createElement("option");
+      option.value = nombre;
+      lista.appendChild(option);
+    }
+  } catch {
+    // La sugerencia es auxiliar; no bloquea el formulario.
+  }
+}
+
+function cargarEstatusSugeridos() {
+  const lista = $("eq-estatus-lista");
+  lista.textContent = "";
+  const valores = new Set(["En Operación", "Dañada", "Almacenada", "Sin tóner", "Baja"]);
+  for (const s of estado.cobertura?.sedes || []) {
+    for (const e of s.equipos || []) if (e.estatus) valores.add(e.estatus);
+  }
+  for (const valor of [...valores].sort()) {
+    const option = document.createElement("option");
+    option.value = valor;
+    lista.appendChild(option);
+  }
+}
+
+function abrirEquipoForm(equipo) {
+  if (!estado.sedes.length) {
+    toast("No tienes una sede asignada.", "error");
+    return;
+  }
+  $("equipo-form").reset();
+  setEqStatus("");
+  const original = equipo && equipo.sn ? equipo.sn : "";
+  $("eq-original").value = original;
+  $("eq-sn").readOnly = Boolean(original);
+  const select = $("eq-sede");
+  select.textContent = "";
+  for (const sede of estado.sedes) select.appendChild(new Option(sede, sede));
+  const sedePrevia = equipo?.sede || $("cov-sede").value || estado.sedes[0];
+  select.value = estado.sedes.includes(sedePrevia) ? sedePrevia : estado.sedes[0];
+  const valores = {
+    "eq-sn": equipo?.sn || "",
+    "eq-marca": equipo?.marca || "",
+    "eq-modelo": equipo?.modelo || "",
+    "eq-ubicacion": equipo?.ubicacion || "",
+    "eq-piso": equipo?.piso || "",
+    "eq-estatus": equipo?.estatus || "En Operación",
+    "eq-domicilio": equipo?.domicilio || "",
+    "eq-zona": equipo?.zona || "",
+    "eq-contador": equipo?.contador_inicial || "",
+  };
+  for (const [id, valor] of Object.entries(valores)) $(id).value = valor;
+  cargarEstatusSugeridos();
+  cargarUbicacionesUsuario($("eq-ubicacion").value);
+  $("equipo-dialog").showModal();
+}
+
+async function guardarEquipoUsuario(evento) {
+  evento.preventDefault();
+  const datos = {
+    sn: $("eq-sn").value.trim(),
+    marca: $("eq-marca").value.trim(),
+    modelo: $("eq-modelo").value.trim(),
+    sede: $("eq-sede").value,
+    ubicacion: $("eq-ubicacion").value.trim(),
+    piso: $("eq-piso").value.trim(),
+    estatus: $("eq-estatus").value.trim(),
+    domicilio: $("eq-domicilio").value.trim(),
+    zona: $("eq-zona").value.trim(),
+    contador_inicial: $("eq-contador").value.trim(),
+  };
+  if (!datos.sn) {
+    setEqStatus("Falta el serial.");
+    return;
+  }
+  try {
+    const d = await api("/api/equipos", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(datos),
+    });
+    $("equipo-dialog").close();
+    toast(`${d.creado ? "Equipo agregado" : "Equipo actualizado"}: ${d.sn}`, "ok");
+    await cargarCobertura(true);
+  } catch (error) {
+    setEqStatus(error.message);
+  }
+}
+
 async function abrirResumen(job) {
   $("resumen-nombre").textContent = job.filename;
   $("resumen-texto").textContent = "Cargando resultado…";
@@ -547,8 +654,8 @@ function renderCobertura() {
   const datos = estado.cobertura;
   if (!datos) return;
   const sedes = datos.sedes || [];
-  const faltantes = sedes.flatMap((s) =>
-    (s.faltantes || []).map((e) => ({ ...e, sede: s.sede })));
+  const equipos = sedes.flatMap((s) =>
+    (s.equipos || s.faltantes || []).map((e) => ({ ...e, sede: s.sede })));
   const escaneados = sedes.flatMap((s) =>
     (s.detalle_escaneos || []).map((e) => ({ ...e, sede: s.sede })));
   const q = ($("cov-buscar")?.value || "").trim().toLowerCase();
@@ -562,27 +669,38 @@ function renderCobertura() {
   $("cov-faltantes").textContent = datos.faltantes ?? 0;
   $("cov-duplicados").textContent = datos.duplicados ?? 0;
   $("cov-sede-nombre").textContent = sedes.map((s) => s.sede).join(" · ") || "—";
-  $("cov-faltantes-count").textContent = String(faltantes.filter(filtro).length);
+  $("cov-faltantes-count").textContent = String(equipos.filter(filtro).length);
 
   const cuerpoF = $("cov-faltantes-body");
   cuerpoF.textContent = "";
-  const visiblesF = faltantes.filter(filtro);
+  const visiblesF = equipos.filter(filtro);
   if (!visiblesF.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.className = "admin-empty";
-    td.textContent = q ? "Sin coincidencias." : "No hay faltantes en este mes.";
+    td.textContent = q ? "Sin coincidencias." : "No hay equipos inventariados en esta sede.";
     tr.appendChild(td);
     cuerpoF.appendChild(tr);
   } else {
     for (const e of visiblesF) {
       const tr = document.createElement("tr");
+      const clase = claseEstatus(e.estatus);
+      if (clase) tr.classList.add(clase);
+      if (!e.escaneado) tr.classList.add("faltante");
       for (const v of [e.sede, e.sn, e.marca, e.modelo, e.ubicacion, e.piso, e.estatus]) {
         const td = document.createElement("td");
         td.textContent = v || "—";
         tr.appendChild(td);
       }
+      const tdAcc = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-text";
+      btn.textContent = "Editar";
+      btn.addEventListener("click", () => abrirEquipoForm(e));
+      tdAcc.appendChild(btn);
+      tr.appendChild(tdAcc);
       cuerpoF.appendChild(tr);
     }
   }
@@ -665,6 +783,14 @@ async function iniciar() {
   $("cov-sede").addEventListener("change", () => cargarCobertura(true));
   $("cov-buscar").addEventListener("input", renderCobertura);
   $("cov-reset").addEventListener("click", reiniciarCobertura);
+  $("cov-add").addEventListener("click", () => abrirEquipoForm(null));
+  $("eq-cancel").addEventListener("click", () => $("equipo-dialog").close());
+  $("equipo-form").addEventListener("submit", guardarEquipoUsuario);
+  let timerEqUbicacion = null;
+  $("eq-ubicacion").addEventListener("input", (e) => {
+    clearTimeout(timerEqUbicacion);
+    timerEqUbicacion = setTimeout(() => cargarUbicacionesUsuario(e.target.value), 250);
+  });
   const periodo = $("cov-periodo");
   if (!periodo.value) periodo.value = periodoLocal();
   await cargarJobs(false);

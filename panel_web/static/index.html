@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025f">
+  <link rel="stylesheet" href="/static/style.css?v=20261025g">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -199,6 +199,7 @@
           <input id="cov-periodo" class="month-input" type="month">
           <select id="cov-sede" class="month-input" aria-label="Sede"></select>
           <button class="btn-text" type="button" id="cov-refresh">Actualizar ↻</button>
+          <button class="btn-text" type="button" id="cov-add">Agregar registro</button>
           <button class="btn-text danger" type="button" id="cov-reset" hidden>Reiniciar mes</button>
         </div>
       </div>
@@ -217,12 +218,12 @@
 
         <div class="coverage-block">
           <div class="coverage-block-head">
-            <span class="mono-label">FALTANTES DE <span id="cov-sede-nombre">—</span></span>
+            <span class="mono-label">EQUIPOS DE <span id="cov-sede-nombre">—</span></span>
             <span class="mono-label" id="cov-faltantes-count">0</span>
           </div>
           <div class="table-scroll">
             <table class="admin-table coverage-table">
-              <thead><tr><th>Sede</th><th>Serial</th><th>Marca</th><th>Modelo</th><th>Ubicación</th><th>Piso</th><th>Estatus</th></tr></thead>
+              <thead><tr><th>Sede</th><th>Serial</th><th>Marca</th><th>Modelo</th><th>Ubicación</th><th>Piso</th><th>Estatus</th><th></th></tr></thead>
               <tbody id="cov-faltantes-body"></tbody>
             </table>
           </div>
@@ -259,6 +260,34 @@
       <div class="profile-actions">
         <button class="btn btn-primary" value="save" type="submit">Guardar</button>
         <button class="btn-text" value="cancel" type="button" id="perfil-cancel">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="equipo-dialog" class="profile-dialog equipo-dialog">
+    <form id="equipo-form" autocomplete="off">
+      <div class="section-label"><span class="section-num">03</span><span class="mono-label">EQUIPO DE MI SEDE</span></div>
+      <input type="hidden" id="eq-original">
+      <div class="equipo-form-grid">
+        <label>Serial<input id="eq-sn" maxlength="256" required></label>
+        <label>Marca<input id="eq-marca" maxlength="120"></label>
+        <label>Modelo<input id="eq-modelo" maxlength="160"></label>
+        <label>Sede<select id="eq-sede"></select></label>
+        <label>Ubicación
+          <input id="eq-ubicacion" list="eq-ubicaciones" autocomplete="off" maxlength="300">
+          <datalist id="eq-ubicaciones"></datalist>
+        </label>
+        <label>Piso<input id="eq-piso" maxlength="80"></label>
+        <label>Estatus<input id="eq-estatus" list="eq-estatus-lista" maxlength="120"></label>
+        <datalist id="eq-estatus-lista"></datalist>
+        <label>Domicilio<input id="eq-domicilio" maxlength="300"></label>
+        <label>Zona<input id="eq-zona" maxlength="80"></label>
+        <label>Contador inicial<input id="eq-contador" maxlength="80"></label>
+      </div>
+      <p class="form-status" id="eq-status" role="status"></p>
+      <div class="profile-actions">
+        <button class="btn btn-primary" type="submit">Guardar equipo</button>
+        <button class="btn-text" type="button" id="eq-cancel">Cancelar</button>
       </div>
     </form>
   </dialog>
@@ -314,6 +343,6 @@
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261025f" defer></script>
+  <script src="/static/app.js?v=20261025g" defer></script>
 </body>
 </html>

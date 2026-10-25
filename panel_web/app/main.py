@@ -443,6 +443,68 @@ async def cobertura(
         con.close()
 
 
+@app.get("/api/ubicaciones")
+async def ubicaciones_usuario(
+    q: str = "", usuario=Depends(usuario_actual)
+) -> dict[str, Any]:
+    con = _conexion()
+    try:
+        return {"ubicaciones": db.sugerencias_ubicacion(con, q)}
+    finally:
+        con.close()
+
+
+@app.post("/api/equipos")
+async def guardar_equipo_usuario(
+    request: Request, entrada: EquipoEntrada,
+    usuario=Depends(usuario_actual), _csrf=Depends(verificar_csrf),
+) -> dict[str, Any]:
+    datos = entrada.model_dump(exclude_unset=True)
+    sn = (datos.get("sn") or "").strip()
+    if not sn:
+        raise HTTPException(status_code=400, detail="Falta el serial.")
+    con = _conexion()
+    try:
+        permitidas = None if usuario["role"] == "admin" else set(
+            db.sedes_usuario(con, int(usuario["id"]))
+        )
+        existente = con.execute(
+            "SELECT sn, sede FROM equipos WHERE sn_norm=?", (db.normalizar_serial(sn),)
+        ).fetchone()
+        sede = (datos.get("sede") or "").strip()
+        if existente:
+            if permitidas is not None and (existente["sede"] or "") not in permitidas:
+                raise HTTPException(status_code=403, detail="Esa sede no está asignada a tu usuario.")
+            if not sede:
+                sede = existente["sede"] or ""
+            if permitidas is not None and sede not in permitidas:
+                raise HTTPException(status_code=403, detail="No puedes mover el equipo a otra sede.")
+        else:
+            if permitidas is not None:
+                if not sede and len(permitidas) == 1:
+                    sede = next(iter(permitidas))
+                if sede not in permitidas:
+                    raise HTTPException(status_code=403, detail="La sede no está asignada a tu usuario.")
+            if not sede:
+                raise HTTPException(status_code=400, detail="Falta la sede.")
+        datos["sede"] = sede
+        permitidos = {c: datos.get(c, "") for c in db.CAMPOS_EQUIPO if c in datos}
+        if not (permitidos.get("sede") or "").strip() and permitidos.get("domicilio"):
+            permitidos["sede"] = permitidos["domicilio"]
+        creado, sn = db.upsert_equipo(con, sn, **permitidos)
+        ok, detalle, _ = _exportar_inventario(con)
+        db.auditar(
+            con, user_id=int(usuario["id"]), email=usuario["email"],
+            action="inventario_usuario_alta" if creado else "inventario_usuario_edicion",
+            ip=ip_cliente(request), detail=f"{sn} · {sede}",
+        )
+        return {"ok": ok, "sn": sn, "creado": creado,
+                "total": db.contar_equipos(con), "exportado": ok,
+                "detalle": detalle}
+    finally:
+        con.close()
+
+
 @app.post("/api/jobs", status_code=201)
 async def crear_job(
     request: Request,
