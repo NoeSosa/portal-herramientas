@@ -14,6 +14,7 @@ import signal
 import subprocess
 import sys
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -141,11 +142,25 @@ def _ultima_salida(job_dir: Path) -> Path | None:
 
 
 def _zip_resultado(job_dir: Path, carpeta: Path) -> Path:
-    destino = job_dir / "resultado"
-    if destino.with_suffix(".zip").exists():
-        destino.with_suffix(".zip").unlink()
-    shutil.make_archive(str(destino), "zip", root_dir=str(carpeta))
-    return destino.with_suffix(".zip")
+    """ZIP rápido: los PDFs escaneados ya vienen comprimidos; no recomprimirlos.
+
+    Los PDFs se guardan con ZIP_STORED y los textos/registros con ZIP_DEFLATED.
+    Evita pagar deflate sobre imágenes JPEG dentro de PDFs, que casi no reduce
+    tamaño y sí consume CPU.
+    """
+    destino = job_dir / "resultado.zip"
+    if destino.exists():
+        destino.unlink()
+    with zipfile.ZipFile(destino, "w") as z:
+        for ruta in sorted(carpeta.rglob("*")):
+            if not ruta.is_file():
+                continue
+            rel = ruta.relative_to(carpeta).as_posix()
+            if ruta.suffix.lower() == ".pdf":
+                z.write(ruta, rel, compress_type=zipfile.ZIP_STORED)
+            else:
+                z.write(ruta, rel, compress_type=zipfile.ZIP_DEFLATED)
+    return destino
 
 
 def _mensaje_error(rc: int) -> str:
