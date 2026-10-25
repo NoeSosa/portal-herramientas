@@ -1438,6 +1438,10 @@ h1 {
 }
 
 /* Estados distintos de "En Operación" */
+.coverage-table tr.faltante td:first-child {
+  border-left: 3px solid var(--amber);
+}
+
 .coverage-table tr.estado-alerta td {
   background: #fbf1dc;
 }
