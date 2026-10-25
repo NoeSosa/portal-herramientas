@@ -10,6 +10,14 @@ const A = {
   invAll: 0,
   editing: null,
   tick: 0,
+  ocrPag: 0,
+  ocrJob: "",
+  ocrTotal: 0,
+  ocrUltimaPag: 0,
+  ocrUltimoJob: "",
+  ocrUltimoEstado: "",
+  ocrSignature: "",
+  ocrSeq: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -128,11 +136,25 @@ async function iniciar() {
 function conectarEventos() {
   $("admin-job").addEventListener("change", (e) => {
     A.jobId = e.target.value;
+    A.ocrPag = 0;
+    A.ocrJob = "";
+    A.ocrUltimaPag = 0;
+    A.ocrSignature = "";
+    limpiarInspector();
     cargarProgreso();
   });
   $("admin-refresh").addEventListener("click", async () => {
     await cargarJobs();
     await cargarProgreso();
+  });
+
+  $("ocr-prev").addEventListener("click", () => moverOcr(-1));
+  $("ocr-next").addEventListener("click", () => moverOcr(1));
+  $("ocr-reload").addEventListener("click", () => {
+    if (A.ocrPag) cargarOcrPagina(A.ocrPag, false, true);
+  });
+  $("ocr-page-input").addEventListener("change", (e) => {
+    seleccionarPaginaOcr(e.target.value);
   });
 
   $("inv-form").addEventListener("submit", guardarEquipo);
@@ -274,6 +296,7 @@ function limpiarEnVivo() {
   $("scan-img").hidden = true;
   $("scan-placeholder").hidden = false;
   $("scan-paper").classList.remove("scanning");
+  limpiarInspector();
 }
 
 async function cargarProgreso(silencioso = false) {
@@ -318,6 +341,7 @@ function pintarProgreso(d) {
   set("admin-ocr", d.ultima_lectura || "Esperando la primera hoja…");
   pintarPaginas(d.pages || [], paginas, actual);
   pintarRecientes(d.pages || []);
+  actualizarInspector(job, actual, paginas);
 }
 
 function pintarHoja(jobId, pag, estado) {
@@ -340,6 +364,171 @@ function pintarHoja(jobId, pag, estado) {
     };
     img.src = `${url}?v=${Date.now()}`;
   }
+}
+
+function limpiarInspector() {
+  A.ocrPag = 0;
+  A.ocrJob = "";
+  A.ocrTotal = 0;
+  A.ocrUltimaPag = 0;
+  A.ocrUltimoJob = "";
+  A.ocrUltimoEstado = "";
+  A.ocrSignature = "";
+  const img = $("ocr-page-img");
+  img.hidden = true;
+  img.removeAttribute("src");
+  img.dataset.key = "";
+  const vacio = $("ocr-page-empty");
+  vacio.hidden = false;
+  vacio.textContent = "Selecciona una hoja";
+  $("ocr-boxes").textContent = "";
+  $("ocr-page-input").value = "1";
+  set("ocr-total", "/ —");
+  set("ocr-status", "SIN LECTURA");
+  set("ocr-serial", "—");
+  set("ocr-worker", "—");
+  set("ocr-ms", "—");
+  set("ocr-source", "—");
+  set("ocr-text", "Elige una hoja del mapa para ver lo que leyó el OCR.");
+}
+
+function actualizarInspector(job, actual, total) {
+  const n = Number(total || 0);
+  A.ocrTotal = n;
+  const input = $("ocr-page-input");
+  input.max = String(Math.max(1, n));
+  set("ocr-total", `/ ${n || "—"}`);
+
+  if (A.ocrJob !== job.id) {
+    A.ocrJob = job.id;
+    A.ocrPag = Number(actual) || 1;
+    A.ocrUltimaPag = 0;
+    A.ocrUltimoJob = "";
+    A.ocrSignature = "";
+    limpiarInspector();
+    A.ocrJob = job.id;
+    A.ocrTotal = n;
+    A.ocrPag = Math.max(1, Math.min(n || 1, Number(actual) || 1));
+  }
+  if (!A.ocrPag) A.ocrPag = Math.max(1, Math.min(n || 1, Number(actual) || 1));
+  if (n && A.ocrPag > n) A.ocrPag = n;
+  input.value = String(A.ocrPag);
+  marcarPaginaOcr();
+
+  const vivo = job.status === "running" || job.status === "queued";
+  let cambio = A.ocrUltimoJob !== job.id || Number(A.ocrUltimaPag) !== Number(A.ocrPag);
+  if (A.ocrUltimoEstado !== job.status) {
+    A.ocrUltimoEstado = job.status;
+    cambio = true;
+  }
+  if (cambio || (vivo && Number(A.ocrPag) === Number(actual))) {
+    cargarOcrPagina(A.ocrPag, true);
+  }
+}
+
+function marcarPaginaOcr() {
+  document.querySelectorAll("#admin-pages .page-cell").forEach((celda) => {
+    celda.classList.toggle("selected", Number(celda.dataset.pag) === Number(A.ocrPag));
+  });
+}
+
+function seleccionarPaginaOcr(pag) {
+  if (!A.jobId || !A.ocrTotal) return;
+  const destino = Math.max(1, Math.min(Number(A.ocrTotal), Number(pag) || 1));
+  A.ocrPag = destino;
+  A.ocrUltimaPag = 0;
+  A.ocrSignature = "";
+  $("ocr-page-input").value = String(destino);
+  marcarPaginaOcr();
+  cargarOcrPagina(destino, false, true);
+}
+
+function moverOcr(delta) {
+  if (!A.ocrPag) return;
+  seleccionarPaginaOcr(A.ocrPag + Number(delta || 0));
+}
+
+function pintarOcrImagen(pag, estado, forzar) {
+  const img = $("ocr-page-img");
+  const vacio = $("ocr-page-empty");
+  const key = `${A.jobId}:${pag}`;
+  if (img.dataset.key === key && !forzar) return;
+  img.dataset.key = key;
+  img.hidden = true;
+  vacio.hidden = false;
+  vacio.textContent = "CARGANDO HOJA…";
+  img.onload = () => {
+    img.hidden = false;
+    vacio.hidden = true;
+  };
+  img.onerror = () => {
+    img.hidden = true;
+    vacio.hidden = false;
+    vacio.textContent = estado === "running" ? "LEYENDO" : "SIN IMAGEN";
+  };
+  img.src = `/api/admin/jobs/${encodeURIComponent(A.jobId)}/page/${pag}.png?v=${Date.now()}`;
+}
+
+async function cargarOcrPagina(pag, silencioso = false, forzar = false) {
+  if (!A.jobId) return;
+  const jobId = A.jobId;
+  const secuencia = ++A.ocrSeq;
+  try {
+    const d = await api(`/api/admin/jobs/${encodeURIComponent(jobId)}/ocr/${encodeURIComponent(pag)}`);
+    if (secuencia !== A.ocrSeq || jobId !== A.jobId || Number(pag) !== Number(A.ocrPag)) return;
+    A.ocrUltimaPag = Number(pag);
+    A.ocrUltimoJob = jobId;
+    pintarOcrImagen(pag, d.estado, forzar);
+    pintarOcr(d, forzar);
+  } catch (error) {
+    if (!silencioso) {
+      set("ocr-status", "ERROR");
+      set("ocr-source", "—");
+      set("ocr-text", error.message);
+    }
+  }
+}
+
+function pintarOcr(d, forzar = false) {
+  const firma = JSON.stringify([
+    d.pag, d.texto, d.sn, d.estado, d.worker, d.ms, d.parcial,
+    Array.isArray(d.cajas) ? d.cajas.length : 0,
+  ]);
+  if (!forzar && firma === A.ocrSignature) return;
+  A.ocrSignature = firma;
+
+  set("ocr-status", `${etiquetaPagina(d.estado, d.texto)}${d.parcial ? " · PARCIAL" : ""}`);
+  set("ocr-serial", d.sn ? `SERIAL ${d.sn}` : "SIN SERIAL");
+  set("ocr-worker", d.worker ? `LECTOR ${d.worker}` : "—");
+  set("ocr-ms", d.ms ? fmtMs(d.ms) : "—");
+  set("ocr-source", d.fuente === "db" ? "TEXTO GUARDADO" : (d.parcial ? "OCR PARCIAL" : "OCR COMPLETO"));
+  set("ocr-text", d.texto || "Sin texto OCR para esta hoja.");
+
+  const cont = $("ocr-boxes");
+  cont.textContent = "";
+  const tipos = new Set(["serial", "modelo", "contador", "fecha"]);
+  const cajas = Array.isArray(d.cajas) ? d.cajas : [];
+  cajas.forEach((c, i) => {
+    const x = Number(c.x);
+    const y = Number(c.y);
+    const w = Number(c.w);
+    const h = Number(c.h);
+    if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) return;
+    const tipo = tipos.has(c.r) ? c.r : "";
+    const box = el("div", `ocr-box${tipo ? ` ${tipo}` : ""}`);
+    box.style.left = `${Math.max(0, Math.min(100, x * 100))}%`;
+    box.style.top = `${Math.max(0, Math.min(100, y * 100))}%`;
+    box.style.width = `${Math.max(0.2, Math.min(100, w * 100))}%`;
+    box.style.height = `${Math.max(0.2, Math.min(100, h * 100))}%`;
+    box.style.setProperty("--i", String(Math.min(i, 60)));
+    if (c.t) {
+      box.title = c.t;
+      if (tipo === "serial" || tipo === "modelo") {
+        box.appendChild(el("span", "", c.t));
+      }
+    }
+    cont.appendChild(box);
+  });
 }
 
 function pintarWorkers(workers) {
@@ -386,6 +575,7 @@ function pintarPaginas(pages, total, actual) {
   for (let i = 1; i <= total; i += 1) {
     const p = porPag.get(i);
     const celda = el("div", "page-cell");
+    celda.dataset.pag = String(i);
     if (p) {
       const estado = (p.estado || "").toUpperCase();
       if (estado === "OK") celda.classList.add("ok");
@@ -396,12 +586,14 @@ function pintarPaginas(pages, total, actual) {
       celda.classList.add("empty");
     }
     if (i === actual) celda.classList.add("active");
+    if (i === Number(A.ocrPag)) celda.classList.add("selected");
     if (p) {
       celda.title = `Hoja ${i} · ${etiquetaPagina(p.estado, p.ocr).toLowerCase()}` +
         ` · ${p.sn || "sin serial"} · ${p.sede || "sin sede"}`;
     } else {
       celda.title = `Hoja ${i} · pendiente`;
     }
+    celda.addEventListener("click", () => seleccionarPaginaOcr(i));
     cont.appendChild(celda);
   }
 }

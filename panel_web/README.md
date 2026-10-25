@@ -152,6 +152,8 @@ volver a iniciar sesión. Desde ahí se ve:
 
 - Cola y progreso en vivo, hoja por hoja, con el mapa de páginas y los lectores
   OCR.
+- **Inspección OCR**: navegación por hoja, texto completo y cajas de lo detectado
+  sobre la imagen, con animación de detección.
 - Inventario editable: importar Excel, alta/edición/baja de seriales, filtros
   por sede/marca/estatus y exportación.
 - Resumen de sedes con número de equipos, marcas y zonas.

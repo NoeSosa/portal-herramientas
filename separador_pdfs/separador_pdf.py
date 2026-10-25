@@ -352,7 +352,7 @@ def publicar_lectura(pdf, pag, pag_total, ini, fin, ms, texto, **extra):
             "worker": f"{ini}-{fin}", "pid": os.getpid(), "ms": round(ms, 1),
             "slot": int(os.environ.get("PANEL_WORKER_SLOT", "-1") or -1),
             "sn": candidato_serial(texto),
-            "texto": " ".join((texto or "").split())[:800],
+            "texto": " ".join((texto or "").split())[:20000],
             "ts": time.time(),
         }
         linea.update(extra)

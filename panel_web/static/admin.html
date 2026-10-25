@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css?v=20261020c">
-  <link rel="stylesheet" href="/static/admin.css?v=20261020c">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025a">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -135,6 +135,44 @@
         <div id="admin-pages" class="page-grid" aria-label="Mapa de páginas"></div>
       </div>
 
+      <div class="ocr-inspector" id="ocr-inspector">
+        <div class="ocr-inspector-head">
+          <div class="section-label">
+            <span class="mono-label">INSPECCIÓN OCR</span>
+            <span class="mono-label" id="ocr-source">—</span>
+          </div>
+          <div class="ocr-nav">
+            <button class="btn-text" type="button" id="ocr-prev" aria-label="Hoja anterior">←</button>
+            <label class="ocr-page-label" for="ocr-page-input">HOJA</label>
+            <input id="ocr-page-input" class="ocr-page-input" type="number" min="1" value="1">
+            <span class="mono-label" id="ocr-total">/ —</span>
+            <button class="btn-text" type="button" id="ocr-next" aria-label="Hoja siguiente">→</button>
+            <button class="btn-text" type="button" id="ocr-reload" aria-label="Recargar hoja">↻</button>
+          </div>
+        </div>
+
+        <div class="ocr-inspector-grid">
+          <div class="ocr-stage">
+            <div class="ocr-page-wrap" id="ocr-page-wrap">
+              <img id="ocr-page-img" alt="Hoja OCR" hidden>
+              <div class="ocr-boxes" id="ocr-boxes" aria-hidden="true"></div>
+              <div class="ocr-scan-line" aria-hidden="true"></div>
+              <div class="ocr-page-empty" id="ocr-page-empty">Selecciona una hoja</div>
+            </div>
+          </div>
+          <div class="ocr-data">
+            <div class="ocr-meta">
+              <span class="mono-label" id="ocr-status">SIN LECTURA</span>
+              <span class="mono-label" id="ocr-serial">—</span>
+              <span class="mono-label" id="ocr-worker">—</span>
+              <span class="mono-label" id="ocr-ms">—</span>
+            </div>
+            <pre id="ocr-text" class="ocr-full">Elige una hoja del mapa para ver lo que leyó el OCR.</pre>
+            <p class="ocr-hint">Las cajas muestran lo detectado; el texto es la lectura completa de esa hoja.</p>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-two">
         <div class="admin-box">
           <span class="mono-label">ÚLTIMAS HOJAS CLASIFICADAS</span>
@@ -251,6 +289,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261020d" defer></script>
+  <script src="/static/admin.js?v=20261025a" defer></script>
 </body>
 </html>

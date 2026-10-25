@@ -8,6 +8,7 @@ inventario ni acceso a trabajos de otros usuarios.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import os
 import re
@@ -692,6 +693,101 @@ async def admin_job_progress(
         }
     finally:
         con.close()
+
+
+def _eventos_ocr_jsonl(job_dir: Path, job_id: str) -> list[dict[str, Any]]:
+    ruta = job_dir / "progress" / f"{job_id}.ocr.jsonl"
+    if not ruta.is_file():
+        return []
+    eventos: list[dict[str, Any]] = []
+    try:
+        with ruta.open("r", encoding="utf-8", errors="replace") as f:
+            for linea in f:
+                linea = linea.strip()
+                if not linea:
+                    continue
+                try:
+                    ev = json.loads(linea)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(ev, dict):
+                    eventos.append(ev)
+    except OSError:
+        return []
+    return eventos
+
+
+@app.get("/api/admin/jobs/{job_id}/ocr/{pag}")
+async def admin_job_ocr(
+    job_id: str, pag: int, admin=Depends(admin_actual)
+) -> dict[str, Any]:
+    """Texto y cajas OCR de una hoja, para diagnosticar qué leyó el motor."""
+    con = _conexion()
+    try:
+        job = db.job_por_id(con, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Documento no encontrado.")
+        total = int(job["pages"] or 0)
+        if pag < 1 or pag > total:
+            raise HTTPException(status_code=404, detail="Página fuera de rango.")
+        fila = con.execute(
+            "SELECT texto, sn, estado, worker, ms FROM job_pages"
+            " WHERE job_id=? AND pag=?",
+            (job_id, pag),
+        ).fetchone()
+    finally:
+        con.close()
+
+    job_dir = _job_dir(int(job["owner_id"]), job_id)
+    eventos = [
+        ev for ev in _eventos_ocr_jsonl(job_dir, job_id)
+        if int(ev.get("pag") or 0) == pag
+        and ev.get("tipo") in ("ocr_pagina", "ocr_banda")
+    ]
+    finales = [
+        ev for ev in eventos
+        if ev.get("tipo") == "ocr_pagina" and not ev.get("parcial")
+    ]
+    elegidos: list[dict[str, Any]] = []
+    if finales:
+        elegidos = [max(finales, key=lambda ev: float(ev.get("ts") or 0))]
+        parcial = False
+    elif eventos:
+        elegidos = sorted(
+            eventos,
+            key=lambda ev: (
+                int(ev.get("banda") or 0),
+                float(ev.get("ts") or 0),
+            ),
+        )
+        parcial = True
+
+    texto = " ".join(
+        (ev.get("texto") or "").strip() for ev in elegidos if ev.get("texto")
+    ).strip()
+    cajas: list[dict[str, Any]] = []
+    for ev in elegidos:
+        for caja in ev.get("cajas") or []:
+            if isinstance(caja, dict):
+                cajas.append(caja)
+    cajas = cajas[:120]
+    fuente = "ocr_jsonl" if elegidos else "db"
+    return {
+        "job_id": job_id,
+        "pag": pag,
+        "pag_total": total,
+        "texto": texto or (fila["texto"] if fila else "") or "",
+        "cajas": cajas,
+        "sn": (elegidos[-1].get("sn") if elegidos else None)
+              or (fila["sn"] if fila else "") or "",
+        "estado": (fila["estado"] if fila else "") or "",
+        "worker": (elegidos[-1].get("worker") if elegidos else None)
+                  or (fila["worker"] if fila else "") or "",
+        "ms": (elegidos[-1].get("ms") if elegidos else
+               (fila["ms"] if fila else None)),
+        "parcial": parcial,
+        "fuente": fuente,
+    }
 
 
 @app.get("/api/admin/jobs/{job_id}/page/{pag}.png")
