@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FUNCTIONS = {
     'normalizar_sn', 'generar_variantes_ocr', 'validar_sn_contra_inventario',
     'modelo_hp_nuevo', 'datos_uso_hp', 'preparar_uso_hp', 'revisar_grupo_hp',
+    'extraer_serial_etiqueta', 'extraer_serial_generico',
     'identificar_modelo', 'fase_logica', 'procesar_pdf', 'buscar_serial', 'texto_es_util',
 }
 
@@ -36,7 +37,7 @@ def load_logic(folder, sources=None):
         source = sources[name] if sources else (ROOT / folder / name).read_text(encoding='utf-8')
         tree = ast.parse(source)
         nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in FUNCTIONS
-                 or isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'patron_serial_ocr' for t in n.targets)]
+                 or isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in ('patron_serial_ocr', 'PATRON_SERIAL_ETIQUETA') for t in n.targets)]
         exec(compile(ast.Module(body=nodes, type_ignores=[]), name, 'exec'), ns)
     return ns
 
@@ -114,8 +115,17 @@ def test_no_mezclar_modelos(logic, tmp_path):
 def test_serie_nueva_fuera_de_inventario(logic, tmp_path):
     result = run_auto(logic, tmp_path, [usage(), usage(page=2, sn=None)], ())
     assert not result['ok']
-    assert sum(len(p['paginas']) for p in result['verificar']) == 2
-    assert all(p['sn'] == 'MX3CV6Q0Z' for p in result['verificar'])
+    assert len(result['verificar']) == 1
+    assert result['verificar'][0]['paginas'] == [0, 1]
+    assert result['verificar'][0]['sn'] == 'MX3CV6Q0Z'
+
+
+def test_serial_etiqueta_ocr_con_separadores(logic):
+    f = logic['extraer_serial_etiqueta']
+    assert f('Numero de_serie del producto:_VNG3H10339') == 'VNG3H10339'
+    assert f('Numero de serie dei producto: MX3CV6QODK') == 'MX3CV6Q0DK'
+    assert f('Product Serial Number: ABC123456') == 'ABC123456'
+    assert f('Numero de serie del producto: 8158A4C7') == '8158A4C7'
 
 
 def test_modelo_explicito_precede_prefijo_antiguo(logic):
@@ -151,18 +161,18 @@ def test_layout_22_hojas_muestra(logic, tmp_path):
     # Transcripción mínima de las cabeceras visibles de Nuevas_2.pdf (no OCR real).
     texts = [usage('E40040', sn='VNG3H10262'), '',
              *['Página configuración HP LaserJet E40040'] * 6,
-             usage('E40040', sn='VNG3H10333'), '',
+             usage('E40040', sn='VNG3H10339'), '',
              'Página configuración HP LaserJet MFP X53052', 'HP Jetdirect HP LaserJet MFP X53052',
              usage(), usage(page=2, sn=None),
              'Página configuración HP LaserJet MFP X53052', 'HP Jetdirect HP LaserJet MFP X53052',
              usage(sn='MX3CV60086'), '',
              'Página configuración HP LaserJet MFP X53052', 'HP Jetdirect HP LaserJet MFP X53052',
              usage(sn='MX3CV6Q0K'), usage(page=2, sn=None)]
-    serials = ('VNG3H10262', 'VNG3H10333', 'MX3CV6Q0Z', 'MX3CV60086', 'MX3CV6Q0K')
+    serials = ('VNG3H10262', 'VNG3H10339', 'MX3CV6Q0Z', 'MX3CV60086', 'MX3CV6Q0K')
     result = run_auto(logic, tmp_path, texts, serials)
     assert sorted(p['paginas'] for p in result['ok']) == [[0], [8], [12, 13], [16], [20, 21]]
-    assert len(result['descartadas']) == 12
-    assert sorted(p['paginas'] for p in result['verificar']) == [[1], [9], [17]]
+    assert len(result['descartadas']) == 15
+    assert not result['verificar']
     assert sum(len(p['paginas']) for p in result['ok'] + result['verificar']) + len(result['descartadas']) == 22
 
 

@@ -132,6 +132,39 @@ def modelo_hp_nuevo(texto):
     return None
 
 
+# El OCR de estas páginas a veces une palabra y separador: "de_serie",
+# "dei producto", "producto:_". El patrón acepta esas variantes.
+PATRON_SERIAL_ETIQUETA = re.compile(
+    r"(?i)(?:n[uú]mero[\s_\-]*(?:d[eai][\s_\-]*)?serie"
+    r"|(?:product[\s_\-]+)?serial[\s_\-]*(?:no|number|num)?)"
+    r"(?:[\s_\-]*(?:d[eai][il]?[\s_\-]*)?(?:producto|equipo))?"
+    r"[\s:=_\-]*([A-Z0-9]{6,16})\b"
+)
+
+
+def extraer_serial_etiqueta(texto):
+    """Extrae el serial de una etiqueta, aunque el OCR meta guiones/underscores.
+
+    Acepta "Número de serie del producto", "Numero de_serie del producto",
+    "Numero de serie dei producto" y "Product Serial Number". No exige que el
+    serial exista en el inventario ni que el modelo sea conocido.
+    """
+    m = PATRON_SERIAL_ETIQUETA.search(texto or "")
+    if not m:
+        return None
+    cand = m.group(1).upper()
+    # Un serial real de estos equipos tiene al menos dos dígitos.
+    return normalizar_sn(cand) if sum(ch.isdigit() for ch in cand) >= 2 else None
+
+
+def extraer_serial_generico(texto):
+    """Último recurso: serie de 3 letras + alfanumérico con al menos 2 dígitos."""
+    for cand in re.findall(r"\b[A-Z]{3}[A-Z0-9]{5,13}\b", (texto or "").upper()):
+        if sum(ch.isdigit() for ch in cand) >= 2:
+            return normalizar_sn(cand)
+    return None
+
+
 def datos_uso_hp(texto):
     """Clasificación conservadora de hojas E40040/X53052 leídas por OCR."""
     modelo = modelo_hp_nuevo(texto)
@@ -142,12 +175,7 @@ def datos_uso_hp(texto):
     config = bool(re.search(r"\b(?:configuraci[o0]n|configuration|jetdirect)\b", low))
     numero = re.search(r"\b(?:pagina|page)\s*[:#]?\s*([12ilz])\b", low)
     pagina = {"1": 1, "i": 1, "l": 1, "2": 2, "z": 2}.get(numero.group(1)) if numero else None
-    serie = re.search(
-        r"(?i)(?:n[uú]mero\s+de\s+serie\s+del\s+producto|"
-        r"(?:product\s+)?serial\s+number)\s*[:#.-]?\s*([A-Z0-9]{6,16})\b", texto)
-    sn = serie.group(1).upper() if serie else None
-    if sn and not any(c.isdigit() for c in sn):
-        sn = None
+    sn = extraer_serial_etiqueta(texto)
     return {"modelo": modelo, "tipo": "uso" if uso else "config" if config else "desconocido",
             "pagina": pagina, "sn": sn}
 
@@ -265,7 +293,14 @@ def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
 
     for num_pagina in sorted(textos_paginas.keys()):
         texto_pagina = textos_paginas[num_pagina]
+        # Hojas en blanco/reverso: no generan un PDF "Sin_Identificar".
+        if len((texto_pagina or "").strip()) < 15:
+            continue
+
         sn_encontrado = validar_sn_contra_inventario(texto_pagina, sns_esperados)
+
+        if not sn_encontrado:
+            sn_encontrado = extraer_serial_etiqueta(texto_pagina)
 
         if not sn_encontrado:
             for patron in patrones_respaldo:
@@ -275,6 +310,9 @@ def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
                     if sn_encontrado.startswith("VNB080") or sn_encontrado.startswith("VNB08O"):
                         sn_encontrado = "VNB0B0" + sn_encontrado[6:]
                     break
+
+        if not sn_encontrado:
+            sn_encontrado = extraer_serial_generico(texto_pagina)
 
         datos_hp = datos_uso_hp(texto_pagina)
         if not sn_encontrado and datos_hp:

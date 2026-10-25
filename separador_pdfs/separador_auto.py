@@ -240,7 +240,8 @@ def panel_pagina(pdf, pag, pag_total, sn, sede, marca, estado, ms_pagina):
 sys.path.insert(0, SEP_DIR)
 from separador_pdf import (normalizar_sn, generar_variantes_ocr,
                            identificar_modelo, ocr_rango, datos_uso_hp,
-                           preparar_uso_hp, revisar_grupo_hp)  # noqa: E402
+                           preparar_uso_hp, revisar_grupo_hp,
+                           extraer_serial_etiqueta, extraer_serial_generico)  # noqa: E402
 
 
 def load_creds():
@@ -673,9 +674,6 @@ def reocr_serial_encabezado(ruta_pdf, num_pagina, dpi_alto=400):
     página se perdía como 'Sin_Identificar'. A 400 dpi el encabezado ('Numero
     serie equipo : XXXXX') sí se lee. Devuelve el serial o None.
     """
-    patron = re.compile(
-        r'(?i)(?:numero\s*serie\s*equipo|n[uú]mero\s*de\s*serie|serial\s*(?:no|number|num)?)\s*[:\-]?\s*([A-Z0-9]{6,16})')
-    patron_laxo = re.compile(r'(?i)\b(CN[BS][A-Z0-9]{6,10}|VNB[A-Z0-9]{4,10}|PHBTW[A-Z0-9]{4,10})\b')
     import fitz as _fitz
     # Parche numpy/imgaug (numpy 2.x eliminó np.sctypes; imgaug 0.4 lo usa).
     # Necesario aquí porque este import de PaddleOCR ocurre aparte del módulo base.
@@ -698,15 +696,10 @@ def reocr_serial_encabezado(ruta_pdf, num_pagina, dpi_alto=400):
     res = ocr.ocr(img, cls=False)
     texto = " ".join([l[1][0] for l in res[0]]) if res and res[0] else ""
     doc.close()
-    m = patron.search(texto)
-    if m:
-        cand = m.group(1).upper()
-        if sum(ch.isdigit() for ch in cand) >= 2:
-            return cand
-    m = patron_laxo.search(texto)
-    if m:
-        return m.group(1).upper()
-    return None
+    cand = extraer_serial_etiqueta(texto)
+    if cand:
+        return cand
+    return extraer_serial_generico(texto)
 
 
 def reocr_pagina_rotada(ruta_pdf, num_pagina, dpi=None):
@@ -850,11 +843,7 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
 
     # Detección por página
     paginas = []
-    # FIX 2026-09-18: el patrón anterior `CNB[A-Z0-9]?` solo capturaba 1-2 chars tras
-    # Serial etiquetado explícitamente en la hoja (fuente más fiable que el patrón).
-    # En las HP MFP 432 la etiqueta viene como "Numero serie equipo : XXXXX".
-    patron_serie_etiqueta = re.compile(
-        r'(?i)(?:numero\s*serie\s*equipo|n[uú]mero\s*de\s*serie|serial\s*(?:no|number|num)?)\s*[:\-]?\s*([A-Z0-9]{6,16})')
+    descartadas_blanco = []
     for num in sorted(textos):
         _t_pag = time.time()   # PANEL: tiempo de detección/clasificación de esta página
         txt = textos[num]
@@ -870,32 +859,38 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
                     textos[num] = txt_180
             except Exception as e:
                 log(f"[aviso] re-OCR rotado pág {num+1} falló: {e}")
+
+        # Reverso/hoja en blanco: no debe generar un PDF "Sin_Identificar".
+        if len((txt or "").strip()) < 15:
+            descartadas_blanco.append({
+                "num": num, "sn": "SIN_ID", "modelo": "?",
+                "razon": "página en blanco o reverso sin contenido",
+            })
+            panel_pagina(os.path.basename(ruta_pdf), num + 1, total, None, "", None,
+                         "DESCARTADA", _ms_ocr_prom + (time.time() - _t_pag) * 1000.0)
+            continue
+
         info = buscar_serial(txt, idx, idx_norm)
         modelo = identificar_modelo(txt, info["sn"] if info else None)
-        # Serial detectado por patrón (aunque no esté en el inventario) para nombrar el archivo
+        # Serial detectado por etiqueta, aunque no esté en el inventario.
         datos_hp = datos_uso_hp(txt)
         sn_ocr = info["sn"] if info else (datos_hp["sn"] if datos_hp else None)
         if not sn_ocr:
-            # 1º intento: etiqueta explícita "Numero serie equipo : XXXX"
-            m_etq = patron_serie_etiqueta.search(txt)
-            if m_etq:
-                cand = m_etq.group(1).upper()
-                # Descartar capturas basura (solo letras sueltas o muy cortas)
-                if sum(ch.isdigit() for ch in cand) >= 2:
-                    sn_ocr = cand
-            # 2º intento: patrón por marca (serial completo)
-            if not sn_ocr:
-                m = patron_serial_ocr.search(txt)
-                if m:
-                    sn_ocr = m.group(1).upper()
-            # FIX 2026-09-18: 3er intento — re-OCR SOLO del encabezado a mayor dpi.
-            # La hoja de contador HP trae "Numero serie equipo" en la parte superior;
-            # a 200 dpi a veces queda ilegible (p.ej. la pág 7 de este lote).
-            if not sn_ocr:
-                try:
-                    sn_ocr = reocr_serial_encabezado(ruta_pdf, num)
-                except Exception as e:
-                    log(f"[aviso] re-OCR encabezado pág {num+1} falló: {e}")
+            sn_ocr = extraer_serial_etiqueta(txt)
+        if not sn_ocr:
+            m = patron_serial_ocr.search(txt)
+            if m:
+                sn_ocr = m.group(1).upper()
+        if not sn_ocr:
+            sn_ocr = extraer_serial_generico(txt)
+        # FIX 2026-09-18: 3er intento — re-OCR SOLO del encabezado a mayor dpi.
+        if not sn_ocr:
+            try:
+                sn_ocr = reocr_serial_encabezado(ruta_pdf, num)
+            except Exception as e:
+                log(f"[aviso] re-OCR encabezado pág {num+1} falló: {e}")
+        if not info and sn_ocr:
+            sn_ocr = normalizar_sn(sn_ocr)
         # Pantum p1/p2
         low = txt.lower()
         is_p1 = is_p2 = False
@@ -1028,7 +1023,7 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
                     quitar_nums.add(p["num"])
     # FIX 2026-09-18: registrar las hojas descartadas para que la cuenta cuadre
     # (hojas origen = OK + POR_VERIFICAR + DESCARTADAS). Antes desaparecían sin rastro.
-    descartadas = list(descartadas_hp)
+    descartadas = list(descartadas_hp) + list(descartadas_blanco)
     for p, _es_cfg in paginas_filtradas:
         if p["num"] in quitar_nums:
             descartadas.append({
@@ -1074,6 +1069,7 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
     ok = []        # {sn, sede, modelo, paginas:[nums]}
     verificar = []  # {nombre, sede_sugerida, paginas:[nums], razon}
     grupos = {}
+    grupos_ocr = {}
     for p in paginas:
         if p["is_p1"] or p["is_p2"]:
             if p["info"]:
@@ -1084,17 +1080,27 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
             continue
         if p["info"]:
             grupos.setdefault(p["info"]["sn"], {"info": p["info"], "pags": [], "modelo": p["modelo"], "sn_ocr": p["sn_ocr"] or p["info"]["sn"]})["pags"].append(p["num"])
+        elif p.get("sn_ocr"):
+            # Aunque no esté en inventario, el serial detectado es la identidad
+            # del equipo. Agrupar todas sus hojas en UN documento, no una por hoja.
+            clave = normalizar_sn(p["sn_ocr"])
+            g = grupos_ocr.setdefault(clave, {
+                "nombre": p["sn_ocr"], "sn": p["sn_ocr"],
+                "sede": p.get("sede_final") or sede_doc,
+                "paginas": [], "modelo": p.get("modelo"),
+            })
+            g["paginas"].append(p["num"])
+            if not g["sede"]:
+                g["sede"] = p.get("sede_final") or sede_doc
         else:
-            # Sin match de inventario: si el OCR detectó un serial (PHBTW/CNB/VNB/335x)
-            # de una marca conocida, usarlo como nombre para poder identificar la máquina.
-            if p.get("sn_ocr"):
-                verificar.append({"nombre": p["sn_ocr"], "sn": p["sn_ocr"],
-                                  "sede": p.get("sede_final") or sede_doc, "paginas": [p["num"]],
-                                  "razon": f"{p['modelo']} sin match en inventario"})
-            else:
-                verificar.append({"nombre": f"Sin_Identificar_pag{p['num']+1}", "sn": None,
-                                  "sede": p.get("sede_final") or sede_doc, "paginas": [p["num"]],
-                                  "razon": "sin serial en inventario"})
+            verificar.append({"nombre": f"Sin_Identificar_pag{p['num']+1}", "sn": None,
+                              "sede": p.get("sede_final") or sede_doc, "paginas": [p["num"]],
+                              "razon": "sin serial en inventario"})
+
+    for g in grupos_ocr.values():
+        g["paginas"] = sorted(g["paginas"])
+        g["razon"] = f"{g.get('modelo') or 'modelo'} sin match en inventario"
+        verificar.append(g)
 
     # Reglas por modelo (páginas esperadas)
     for sn, g in grupos.items():
