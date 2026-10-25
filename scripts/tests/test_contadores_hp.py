@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FUNCTIONS = {
     'normalizar_sn', 'generar_variantes_ocr', 'validar_sn_contra_inventario',
     'modelo_hp_nuevo', 'datos_uso_hp', 'preparar_uso_hp', 'revisar_grupo_hp',
-    'extraer_serial_etiqueta', 'extraer_serial_generico',
+    'extraer_serial_etiqueta', 'extraer_serial_generico', '_serial_valido',
     'identificar_modelo', 'fase_logica', 'procesar_pdf', 'buscar_serial', 'texto_es_util',
 }
 
@@ -125,6 +125,7 @@ def test_serial_etiqueta_ocr_con_separadores(logic):
     assert f('Numero de_serie del producto:_VNG3H10339') == 'VNG3H10339'
     assert f('Numero de serie dei producto: MX3CV6QODK') == 'MX3CV6Q0DK'
     assert f('Product Serial Number: ABC123456') == 'ABC123456'
+    assert f('Numero de serie de1 producto: Mx3cv6Q0DZ') == 'MX3CV6Q0DZ'
     assert f('Numero de serie del producto: 8158A4C7') == '8158A4C7'
 
 

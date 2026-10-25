@@ -18,11 +18,16 @@ genera igual en `POR_VERIFICAR`, con el serial como nombre.
 ## Cambios implementados
 
 1. **Etiqueta tolerante al OCR**
-   - Acepta `de_serie`, `dei producto`, `producto:_`, `Número serie equipo` y
-     `Product Serial Number`.
+   - Acepta `de_serie`, `de1 producto`, `dei producto`, `producto:_`,
+     `Número serie equipo` y `Product Serial Number`.
+   - No exige mayúsculas: `Mx3cv6Q0DZ` se normaliza a `MX3CV6Q0DZ`.
    - Normaliza `O`/`I`/`L` después de un dígito: `MX3CV6QODK` → `MX3CV6Q0DK`.
-2. **Fallback genérico**
-   - Serial de 3 letras + alfanumérico, con al menos 2 dígitos.
+2. **Fallback por contexto**
+   - Si la etiqueta viene peor (`de1`, `de_serie`), busca un token de serial
+     cerca de `serie`/`serial`.
+   - Acepta prefijos como `MX3` (2 letras + dígito) y `VNG` (3 letras).
+   - Exige 8–16 caracteres, letras y al menos 2 dígitos; así no confunde una
+     fecha como `23OCT2026`.
 3. **Agrupación por serial**
    - Todas las hojas de uso del mismo serial forman **un solo PDF**.
    - Antes, si el serial no estaba en inventario, se generaba un PDF por hoja.
@@ -73,8 +78,9 @@ este mismo PDF:
 - El nombre `Sin_Identificar_pag13__DESCON__...` corresponde al formato del
   motor anterior, no al actual.
 - La causa típica es que el OCR de la página 13 leyó la etiqueta como
-  `Numero de serie dei producto` o `Numero de_serie`, y el patrón anterior solo
-  aceptaba `Número de serie del producto` exacto.
+  `Numero de serie de1 producto: Mx3cv6Q0DZ` (con `de1` y minúsculas), y el
+  patrón anterior solo aceptaba `Número de serie del producto` exacto.
+- El fallback antiguo exigía 3 letras iniciales; `MX3...` no cumple ese patrón.
 - Las páginas 17 y 21 sí pasaron porque su etiqueta OCR coincidió con el patrón
   anterior; no es que esas hojas sean distintas en calidad.
 

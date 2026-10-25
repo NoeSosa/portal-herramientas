@@ -137,7 +137,7 @@ def modelo_hp_nuevo(texto):
 PATRON_SERIAL_ETIQUETA = re.compile(
     r"(?i)(?:n[uú]mero[\s_\-]*(?:d[eai][\s_\-]*)?serie"
     r"|(?:product[\s_\-]+)?serial[\s_\-]*(?:no|number|num)?)"
-    r"(?:[\s_\-]*(?:d[eai][il]?[\s_\-]*)?(?:producto|equipo))?"
+    r"(?:[\s_\-]*(?:d[eai][il1]?[\s_\-]*)?(?:producto|equipo))?"
     r"[\s:=_\-]*([A-Z0-9]{6,16})\b"
 )
 
@@ -157,10 +157,34 @@ def extraer_serial_etiqueta(texto):
     return normalizar_sn(cand) if sum(ch.isdigit() for ch in cand) >= 2 else None
 
 
+def _serial_valido(cand):
+    """Un token de serial: largo 8-16, con letras y al menos 2 dígitos."""
+    if not (8 <= len(cand) <= 16):
+        return False
+    if not any(ch.isalpha() for ch in cand):
+        return False
+    if sum(ch.isdigit() for ch in cand) < 2:
+        return False
+    return True
+
+
 def extraer_serial_generico(texto):
-    """Último recurso: serie de 3 letras + alfanumérico con al menos 2 dígitos."""
-    for cand in re.findall(r"\b[A-Z]{3}[A-Z0-9]{5,13}\b", (texto or "").upper()):
-        if sum(ch.isdigit() for ch in cand) >= 2:
+    """Último recurso para series con prefijos como MX3, VNG, etc.
+
+    Primero busca cerca de la palabra serie/serial, para no confundir fechas
+    u otros códigos de la hoja. Acepta minúsculas y mezclas como MX3CV6Q0DZ.
+    """
+    limpio = (texto or "").upper()
+    for m in re.finditer(r"(?:N[UÚ]MERO|SERIAL|SERIE)(.{0,120})", limpio, re.DOTALL):
+        for cand in re.findall(r"\b[A-Z0-9]{8,16}\b", m.group(1)):
+            if _serial_valido(cand):
+                return normalizar_sn(cand)
+    # Sin etiqueta, sólo aceptar formas de serial (2-3 letras + dígito) para
+    # no confundir fechas como 23OCT2026 ni palabras largas.
+    for cand in re.findall(
+        r"\b(?:[A-Z]{2,3}\d[A-Z0-9]{4,12}|[A-Z]{3}[A-Z0-9]{5,13})\b", limpio
+    ):
+        if _serial_valido(cand):
             return normalizar_sn(cand)
     return None
 
