@@ -212,9 +212,11 @@ function pintarSugerenciasUsuario(datos, q) {
   }
 }
 
-async function cargarUbicacionesUsuario(q = "") {
+async function cargarUbicacionesUsuario(q = "", sede = "") {
   try {
-    const d = await api(`/api/ubicaciones?q=${encodeURIComponent(q)}`);
+    const params = new URLSearchParams({q});
+    if (sede) params.set("sede", sede);
+    const d = await api(`/api/ubicaciones?${params.toString()}`);
     const lista = $("eq-ubicaciones");
     lista.textContent = "";
     for (const nombre of d.ubicaciones || []) {
@@ -231,7 +233,10 @@ async function cargarUbicacionesUsuario(q = "") {
 async function confirmarUbicacionUsuario() {
   const q = $("eq-ubicacion").value.trim();
   if (!q) return {confirmar: false};
-  const d = await api(`/api/ubicaciones?q=${encodeURIComponent(q)}`);
+  const params = new URLSearchParams({q});
+  const sede = $("eq-sede").value;
+  if (sede) params.set("sede", sede);
+  const d = await api(`/api/ubicaciones?${params.toString()}`);
   const exacta = (d.ubicaciones || []).some(
     (n) => n.trim().toLowerCase() === q.toLowerCase(),
   );
@@ -300,7 +305,7 @@ function abrirEquipoForm(equipo) {
   };
   for (const [id, valor] of Object.entries(valores)) $(id).value = valor;
   cargarEstatusSugeridos();
-  cargarUbicacionesUsuario($("eq-ubicacion").value);
+  cargarUbicacionesUsuario($("eq-ubicacion").value, $("eq-sede").value);
   $("equipo-dialog").showModal();
 }
 
@@ -862,7 +867,13 @@ async function iniciar() {
   let timerEqUbicacion = null;
   $("eq-ubicacion").addEventListener("input", (e) => {
     clearTimeout(timerEqUbicacion);
-    timerEqUbicacion = setTimeout(() => cargarUbicacionesUsuario(e.target.value), 250);
+    timerEqUbicacion = setTimeout(
+      () => cargarUbicacionesUsuario(e.target.value, $("eq-sede").value),
+      250,
+    );
+  });
+  $("eq-sede").addEventListener("change", () => {
+    cargarUbicacionesUsuario($("eq-ubicacion").value, $("eq-sede").value);
   });
   const periodo = $("cov-periodo");
   if (!periodo.value) periodo.value = periodoLocal();

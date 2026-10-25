@@ -791,11 +791,15 @@ CAMPOS_EQUIPO = ("marca", "modelo", "tipo", "sede", "zona", "domicilio",
                  "origen_hoja")
 
 
-def _ubicaciones_existentes(con: sqlite3.Connection) -> list[str]:
+def _ubicaciones_existentes(
+    con: sqlite3.Connection, sede: str = ""
+) -> list[str]:
     filas = con.execute(
         "SELECT DISTINCT ubicacion FROM equipos"
         " WHERE ubicacion IS NOT NULL AND ubicacion<>''"
-        " ORDER BY ubicacion COLLATE NOCASE"
+        " AND (?='' OR sede=?)"
+        " ORDER BY ubicacion COLLATE NOCASE",
+        (sede or "", sede or ""),
     ).fetchall()
     return [f["ubicacion"] for f in filas]
 
@@ -815,14 +819,15 @@ def _parecido_ubicacion(texto: str, existente: str) -> float:
 
 
 def ubicaciones_similares(
-    con: sqlite3.Connection, ubicacion: str, umbral: float = 0.55
+    con: sqlite3.Connection, ubicacion: str, sede: str = "",
+    umbral: float = 0.60,
 ) -> list[str]:
     """Sugerencias cercanas; no se usan para fusionar ni guardar nada."""
     nombre = re.sub(r"\s+", " ", str(ubicacion or "")).strip()
     if not nombre:
         return []
     out = []
-    for existente in _ubicaciones_existentes(con):
+    for existente in _ubicaciones_existentes(con, sede):
         if existente.strip().casefold() == nombre.casefold():
             continue
         if _parecido_ubicacion(nombre, existente) >= umbral:
@@ -830,9 +835,23 @@ def ubicaciones_similares(
     return out[:8]
 
 
-def sugerencias_ubicacion(con: sqlite3.Connection, q: str = "") -> list[str]:
+def ubicacion_exacta(
+    con: sqlite3.Connection, ubicacion: str, sede: str = ""
+) -> bool:
+    nombre = re.sub(r"\s+", " ", str(ubicacion or "")).strip().casefold()
+    if not nombre:
+        return False
+    return any(
+        n.strip().casefold() == nombre
+        for n in _ubicaciones_existentes(con, sede)
+    )
+
+
+def sugerencias_ubicacion(
+    con: sqlite3.Connection, q: str = "", sede: str = ""
+) -> list[str]:
     q = (q or "").strip()
-    existentes = _ubicaciones_existentes(con)
+    existentes = _ubicaciones_existentes(con, sede)
     if not q:
         return existentes[:30]
     qlow = q.casefold()

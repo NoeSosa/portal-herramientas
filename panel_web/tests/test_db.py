@@ -163,6 +163,25 @@ class CoberturaTest(unittest.TestCase):
         fila = db.listar_equipos(self.con)[0]
         self.assertEqual(fila["ubicacion"], "Juzgado Segundo en Materia Penal")
 
+    def test_sugerencias_y_exactas_solo_de_la_sede(self) -> None:
+        db.upsert_equipo(self.con, "AAA111", sede="Reynosa",
+                         ubicacion="JUZGADO CUARTO ADMINISTRATIVO")
+        db.upsert_equipo(self.con, "BBB222", sede="Matamoros",
+                         ubicacion="Juzgado Cuarto Administrativo Matamoros")
+        db.upsert_equipo(self.con, "CCC333", sede="Reynosa",
+                         ubicacion="Juzgado Quinto Administrativo")
+        propias = db.sugerencias_ubicacion(
+            self.con, "JUZGADO CUARTO", "Reynosa"
+        )
+        self.assertIn("JUZGADO CUARTO ADMINISTRATIVO", propias)
+        self.assertNotIn("Juzgado Cuarto Administrativo Matamoros", propias)
+        self.assertTrue(db.ubicacion_exacta(
+            self.con, "juzgado cuarto administrativo", "Reynosa"
+        ))
+        self.assertFalse(db.ubicacion_exacta(
+            self.con, "juzgado cuarto administrativo", "Matamoros"
+        ))
+
     def test_faltantes_y_cobertura(self) -> None:
         db.upsert_equipo(self.con, "AAA111", sede="Reynosa", marca="HP")
         db.upsert_equipo(self.con, "BBB222", sede="Reynosa", marca="HP")

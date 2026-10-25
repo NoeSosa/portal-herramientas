@@ -188,7 +188,13 @@ function conectarEventos() {
   let timerUbicacion = null;
   $("inv-ubicacion").addEventListener("input", (e) => {
     clearTimeout(timerUbicacion);
-    timerUbicacion = setTimeout(() => cargarUbicaciones(e.target.value), 250);
+    timerUbicacion = setTimeout(
+      () => cargarUbicaciones(e.target.value, $("inv-sede").value.trim()),
+      250,
+    );
+  });
+  $("inv-sede").addEventListener("change", () => {
+    cargarUbicaciones($("inv-ubicacion").value, $("inv-sede").value.trim());
   });
   $("inv-delete-filtered").addEventListener("click", () => borrarInventario(false));
   $("inv-delete-all").addEventListener("click", () => borrarInventario(true));
@@ -1030,9 +1036,11 @@ function pintarSugerenciasUbicacion(contenedor, aviso, input, datos, q) {
   }
 }
 
-async function cargarUbicaciones(q) {
+async function cargarUbicaciones(q, sede = "") {
   try {
-    const d = await api(`/api/admin/ubicaciones?q=${encodeURIComponent(q || "")}`);
+    const params = new URLSearchParams({q: q || ""});
+    if (sede) params.set("sede", sede);
+    const d = await api(`/api/admin/ubicaciones?${params.toString()}`);
     const lista = $("inv-ubicaciones");
     lista.textContent = "";
     for (const nombre of d.ubicaciones || []) {
@@ -1056,7 +1064,10 @@ async function confirmarUbicacionNueva() {
   const input = $("inv-ubicacion");
   const q = input.value.trim();
   if (!q) return {confirmar: false};
-  const d = await api(`/api/admin/ubicaciones?q=${encodeURIComponent(q)}`);
+  const params = new URLSearchParams({q});
+  const sede = $("inv-sede").value.trim();
+  if (sede) params.set("sede", sede);
+  const d = await api(`/api/admin/ubicaciones?${params.toString()}`);
   const exacta = (d.ubicaciones || []).some(
     (n) => n.trim().toLowerCase() === q.toLowerCase(),
   );
