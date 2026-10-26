@@ -54,7 +54,11 @@ async function api(ruta, opciones = {}) {
       }
     }
   }
-  if (!respuesta.ok) throw new Error(textoError(datos, respuesta.status));
+  if (!respuesta.ok) {
+    const error = new Error(datos?.detail?.mensaje || textoError(datos, respuesta.status));
+    error.codigo = datos?.detail?.codigo;
+    throw error;
+  }
   return datos;
 }
 
@@ -562,17 +566,28 @@ async function subirArchivos(archivos) {
   zona.classList.add("subiendo");
   visual.hidden = false;
   let subidos = 0;
+  let omitidos = 0;
 
   try {
     for (const archivo of lista) {
       mostrarEstado(`Subiendo ${archivo.name} (${subidos + 1}/${lista.length})…`);
       const datos = new FormData();
       datos.append("archivo", archivo, archivo.name);
-      await api("/api/jobs", { method: "POST", body: datos });
+      try {
+        await api("/api/jobs", { method: "POST", body: datos });
+      } catch (error) {
+        if (error.codigo !== "pdf_repetido") throw error;
+        if (!window.confirm(`${archivo.name}: ${error.message}`)) {
+          omitidos++;
+          continue;
+        }
+        datos.append("reprocesar", "true");
+        await api("/api/jobs", { method: "POST", body: datos });
+      }
       subidos++;
     }
     mostrarEstado(
-      subidos === 1
+      omitidos ? `${subidos} documento(s) agregado(s); ${omitidos} repetido(s) omitido(s).` : subidos === 1
         ? "Documento agregado a la cola."
         : `${subidos} documentos agregados a la cola.`,
       "ok",
@@ -765,7 +780,9 @@ async function guardarPerfil(evento) {
   }
 }
 
+let solicitudCobertura = 0;
 async function cargarCobertura(silencioso = false) {
+  const solicitud = ++solicitudCobertura;
   if (!estado.sedes.length) {
     $("cov-empty").hidden = false;
     $("cov-content").hidden = true;
@@ -791,13 +808,14 @@ async function cargarCobertura(silencioso = false) {
     const q = new URLSearchParams({ periodo });
     if (select.value) q.set("sede", select.value);
     const d = await api(`/api/cobertura?${q.toString()}`);
+    if (solicitud !== solicitudCobertura) return;
     estado.cobertura = d;
     renderCobertura();
     if (!silencioso) toast("Cobertura actualizada.", "info");
   } catch (error) {
     if (!silencioso) toast(error.message, "error");
   } finally {
-    $("cov-content").removeAttribute("aria-busy");
+    if (solicitud === solicitudCobertura) $("cov-content").removeAttribute("aria-busy");
   }
 }
 
@@ -805,6 +823,13 @@ function renderCobertura() {
   const datos = estado.cobertura;
   if (!datos) return;
   const sedes = datos.sedes || [];
+  const historico = sedes.some((s) => s.cerrado);
+  $("cov-add").hidden = historico;
+  $("cov-add-inline").hidden = historico;
+  $("cov-historia").textContent = sedes.some((s) => s.inventario_origen === "reconstruido")
+    ? "Mes anterior reconstruido con el inventario disponible; no existía una copia histórica."
+    : historico ? "Mes cerrado: los equipos y sus sedes se conservan según el inventario de ese mes."
+    : "Mes abierto: la cobertura incorpora las actualizaciones del inventario.";
   const equipos = sedes.flatMap((s) =>
     (s.equipos || s.faltantes || []).map((e) => ({ ...e, sede: s.sede })));
   const escaneados = sedes.flatMap((s) =>
@@ -869,6 +894,7 @@ function renderCobertura() {
       accion.addEventListener("click", limpiarFiltrosCobertura);
     } else {
       accion.textContent = "Agregar equipo";
+      accion.hidden = historico;
       accion.addEventListener("click", () => abrirEquipoForm(null));
     }
     td.appendChild(accion);
@@ -896,6 +922,7 @@ function renderCobertura() {
       btn.type = "button";
       btn.className = "btn-text";
       btn.textContent = "Editar";
+      btn.hidden = historico;
       btn.addEventListener("click", () => abrirEquipoForm(e));
       tdAcc.appendChild(btn);
       tr.appendChild(tdAcc);
@@ -927,7 +954,7 @@ function renderCobertura() {
       const estadoTexto = e.duplicado ? "DUPLICADO" : "OK";
       for (const v of [
         e.sn, e.escaneado_en ? e.escaneado_en.replace("T", " ").slice(0, 16) : "—",
-        e.usuario || "—", e.documento || "—", estadoTexto,
+        e.usuario || "—", `${e.documento || "—"}${e.archivo_eliminado ? " (archivo eliminado)" : ""}`, estadoTexto,
       ]) {
         const td = document.createElement("td");
         td.textContent = v;
@@ -1007,13 +1034,17 @@ async function iniciar() {
   await cargarJobs(false);
   await cargarCobertura(true);
 
+  let ultimaCobertura = Date.now();
   estado.timer = window.setInterval(() => {
     if (document.hidden) return;
     const activo = document.activeElement;
     // No reemplazar la tabla mientras el usuario está enfocando una acción.
     if (activo && activo.closest && activo.closest("#jobs")) return;
     cargarJobs(true);
-    if (new Date().getSeconds() % 6 === 0) cargarCobertura(true);
+    if (Date.now() - ultimaCobertura >= 6000) {
+      ultimaCobertura = Date.now();
+      cargarCobertura(true);
+    }
   }, 3000);
 }
 

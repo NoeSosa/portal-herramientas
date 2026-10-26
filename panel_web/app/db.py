@@ -8,6 +8,7 @@ haya dos procesos tomando el mismo job.
 from __future__ import annotations
 
 import os
+import json
 import re
 import sqlite3
 from difflib import SequenceMatcher
@@ -166,6 +167,28 @@ CREATE TABLE IF NOT EXISTS cobertura_meta (
     periodo TEXT PRIMARY KEY,
     backfill_en TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS cobertura_periodos (
+    periodo TEXT PRIMARY KEY,
+    capturado_en TEXT NOT NULL,
+    origen TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cobertura_inventario (
+    periodo TEXT NOT NULL,
+    sn TEXT NOT NULL,
+    sede TEXT NOT NULL,
+    datos TEXT NOT NULL,
+    PRIMARY KEY(periodo, sn)
+);
+CREATE TABLE IF NOT EXISTS cobertura_lecturas (
+    job_id TEXT NOT NULL,
+    sn TEXT NOT NULL,
+    periodo TEXT NOT NULL,
+    owner_id INTEGER,
+    escaneado_en TEXT NOT NULL,
+    documento TEXT NOT NULL,
+    PRIMARY KEY(job_id, sn)
+);
+CREATE INDEX IF NOT EXISTS idx_lecturas_periodo ON cobertura_lecturas(periodo);
 """
 
 ESTADOS_ACTIVOS = ("queued", "running")
@@ -192,6 +215,11 @@ def _migrar_equipos(con: sqlite3.Connection) -> None:
     for col in ("ubicacion", "piso", "sn_norm", "ubicacion_norm"):
         if col not in cols:
             con.execute(f"ALTER TABLE equipos ADD COLUMN {col} TEXT")
+    # Completar registros anteriores sin alterar su serie real ni fusionarlos.
+    for fila in con.execute("SELECT sn, ubicacion FROM equipos").fetchall():
+        con.execute("UPDATE equipos SET sn_norm=?, ubicacion_norm=? WHERE sn=?",
+                    (normalizar_serial(fila["sn"]), normalizar_ubicacion(fila["ubicacion"]), fila["sn"]))
+    con.execute("CREATE INDEX IF NOT EXISTS idx_equipos_sn_norm ON equipos(sn_norm)")
 
 
 def _migrar_usuarios(con: sqlite3.Connection) -> None:
@@ -204,8 +232,16 @@ def inicializar(ruta: Path) -> None:
     con = conectar(ruta)
     try:
         con.executescript(ESQUEMA)
+        con.execute("BEGIN IMMEDIATE")
         _migrar_equipos(con)
         _migrar_usuarios(con)
+        if "file_hash" not in {f["name"] for f in con.execute("PRAGMA table_info(jobs)")}:
+            con.execute("ALTER TABLE jobs ADD COLUMN file_hash TEXT")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_jobs_hash ON jobs(owner_id, file_hash)")
+        if "documento" not in {f["name"] for f in con.execute("PRAGMA table_info(cobertura_escaneos)")}:
+            con.execute("ALTER TABLE cobertura_escaneos ADD COLUMN documento TEXT")
+        con.execute("UPDATE cobertura_escaneos SET documento=(SELECT filename FROM jobs WHERE id=job_id) WHERE documento IS NULL")
+        asegurar_inventario_periodo(con, periodo_de())
         con.commit()
     finally:
         con.close()
@@ -295,6 +331,12 @@ def listar_sedes(con: sqlite3.Connection) -> list[str]:
     return [f["sede"] for f in filas]
 
 
+def listar_sedes_historicas(con: sqlite3.Connection) -> list[str]:
+    return [f[0] for f in con.execute(
+        "SELECT sede FROM equipos WHERE COALESCE(sede,'')<>''"
+        " UNION SELECT sede FROM cobertura_inventario ORDER BY sede")]
+
+
 def auditar(
     con: sqlite3.Connection,
     *,
@@ -324,16 +366,24 @@ def crear_job(
     size: int,
     pages: int,
     client_ip: str | None,
+    file_hash: str | None = None,
 ) -> sqlite3.Row:
     con.execute(
         "INSERT INTO jobs(id, owner_id, owner_email, filename, stored_name,"
-        " size, pages, status, message, created_at, client_ip)"
-        " VALUES(?,?,?,?,?,?,?, 'queued', 'En cola', ?, ?)",
+        " size, pages, status, message, created_at, client_ip, file_hash)"
+        " VALUES(?,?,?,?,?,?,?, 'queued', 'En cola', ?, ?, ?)",
         (job_id, owner_id, owner_email, filename, stored_name, size, pages,
-         ahora(), client_ip),
+         ahora(), client_ip, file_hash),
     )
     con.commit()
     return con.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+
+
+def job_por_hash(con: sqlite3.Connection, owner_id: int, file_hash: str):
+    return con.execute(
+        "SELECT id, filename, created_at, status FROM jobs WHERE owner_id=? AND file_hash=?"
+        " ORDER BY created_at DESC LIMIT 1", (owner_id, file_hash),
+    ).fetchone()
 
 
 def job_por_id(
@@ -433,15 +483,19 @@ def borrar_job(con: sqlite3.Connection, job_id: str, owner_id: int) -> bool:
     cur = con.execute(
         "DELETE FROM jobs WHERE id=? AND owner_id=?", (job_id, owner_id)
     )
-    con.execute("DELETE FROM cobertura_escaneos WHERE job_id=?", (job_id,))
-    con.execute("DELETE FROM job_pages WHERE job_id=?", (job_id,))
+    if cur.rowcount:
+        con.execute("DELETE FROM cobertura_escaneos WHERE job_id=?", (job_id,))
+        con.execute("DELETE FROM cobertura_lecturas WHERE job_id=?", (job_id,))
+        con.execute("DELETE FROM job_pages WHERE job_id=?", (job_id,))
+        recalcular_duplicados(con)
     con.commit()
     return cur.rowcount > 0
 
 
 def borrar_job_por_id(con: sqlite3.Connection, job_id: str) -> None:
+    """Retención: elimina archivos/metadatos del job, conserva la cobertura."""
+    registrar_cobertura_job(con, job_id)
     con.execute("DELETE FROM jobs WHERE id=?", (job_id,))
-    con.execute("DELETE FROM cobertura_escaneos WHERE job_id=?", (job_id,))
     con.execute("DELETE FROM job_pages WHERE job_id=?", (job_id,))
     con.commit()
 
@@ -535,93 +589,119 @@ def periodo_de(fecha_iso: str | None = None) -> str:
     return fecha.astimezone(_TZ_CUOTA).strftime("%Y-%m")
 
 
-def registrar_cobertura_job(con: sqlite3.Connection, job_id: str) -> int:
-    """Guarda seriales distintos del job en la cobertura mensual.
+def asegurar_inventario_periodo(con: sqlite3.Connection, periodo: str, *, refrescar: bool = False) -> None:
+    """El mes abierto refleja el inventario; los meses anteriores quedan fijos."""
+    existe = con.execute("SELECT 1 FROM cobertura_periodos WHERE periodo=?", (periodo,)).fetchone()
+    if existe and (periodo != periodo_de() or not refrescar):
+        return
+    if not existe:
+        con.execute("INSERT INTO cobertura_periodos VALUES(?,?,?)",
+                    (periodo, ahora(), "registrado" if periodo == periodo_de() else "reconstruido"))
+    con.execute("DELETE FROM cobertura_inventario WHERE periodo=?", (periodo,))
+    for fila in con.execute("SELECT sn,sede,marca,modelo,zona,domicilio,ubicacion,piso,estatus,contador_inicial"
+                            " FROM equipos WHERE COALESCE(sede,'')<>''").fetchall():
+        con.execute("INSERT INTO cobertura_inventario VALUES(?,?,?,?)",
+                    (periodo, fila["sn"], fila["sede"], json.dumps(dict(fila), ensure_ascii=False)))
 
-    Solo cuenta seriales que existen en el inventario (para poder compararlos
-    con los equipos esperados). Los no inventariados se muestran aparte.
-    """
-    job = con.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
-    if not job:
-        return 0
-    periodo = periodo_de(job["finished_at"] or job["created_at"])
-    escaneado_en = job["finished_at"] or ahora()
-    filas = con.execute(
-        "SELECT jp.sn AS sn, e.sede AS sede"
-        " FROM job_pages jp JOIN equipos e ON e.sn=jp.sn"
-        " WHERE jp.job_id=? AND jp.sn IS NOT NULL AND jp.sn<>''"
-        " AND COALESCE(jp.estado,'')<>'DESCARTADA'"
-        " GROUP BY jp.sn, e.sede",
-        (job_id,),
-    ).fetchall()
-    nuevos = 0
-    for fila in filas:
-        sn, sede = fila["sn"], fila["sede"]
-        if not sede:
+
+def recalcular_duplicados(con: sqlite3.Connection) -> None:
+    con.execute("UPDATE cobertura_escaneos SET duplicado=0, duplicado_de=NULL")
+    primeros = {}
+    for f in con.execute("SELECT id, periodo, sede, sn FROM cobertura_escaneos WHERE excluido=0"
+                         " ORDER BY escaneado_en, id").fetchall():
+        clave = (f["periodo"], f["sede"], normalizar_serial(f["sn"]))
+        if clave in primeros:
+            con.execute("UPDATE cobertura_escaneos SET duplicado=1, duplicado_de=? WHERE id=?",
+                        (primeros[clave], f["id"]))
+        else:
+            primeros[clave] = f["id"]
+
+
+def reconciliar_cobertura(con: sqlite3.Connection, periodo: str) -> None:
+    asegurar_inventario_periodo(con, periodo, refrescar=True)
+    indice = {}
+    for f in con.execute("SELECT sn, sede FROM cobertura_inventario WHERE periodo=?", (periodo,)):
+        indice.setdefault(normalizar_serial(f["sn"]), []).append(f)
+    resets = {f["sede"]: f["reset_en"] for f in con.execute(
+        "SELECT sede, reset_en FROM cobertura_resets WHERE periodo=?", (periodo,))}
+    existentes = {}
+    for f in con.execute("SELECT * FROM cobertura_escaneos WHERE periodo=?", (periodo,)):
+        existentes.setdefault((f["job_id"], normalizar_serial(f["sn"])), f)
+    for f in con.execute("SELECT * FROM cobertura_lecturas WHERE periodo=? ORDER BY escaneado_en", (periodo,)).fetchall():
+        candidatos = indice.get(normalizar_serial(f["sn"]), [])
+        # Una clave OCR ambigua nunca decide qué equipo se ha escaneado.
+        if len(candidatos) != 1:
             continue
-        previo = con.execute(
-            "SELECT id FROM cobertura_escaneos"
-            " WHERE periodo=? AND sede=? AND sn=? AND excluido=0"
-            " ORDER BY id LIMIT 1",
-            (periodo, sede, sn),
-        ).fetchone()
-        cur = con.execute(
+        equipo = candidatos[0]
+        if f["escaneado_en"] <= resets.get(equipo["sede"], ""):
+            continue
+        clave = (f["job_id"], normalizar_serial(f["sn"]))
+        previo = existentes.get(clave)
+        if previo:
+            # Conserva exclusión, motivo e identidad al corregir la sede del mes abierto.
+            if periodo == periodo_de():
+                con.execute("UPDATE cobertura_escaneos SET sede=?, sn=? WHERE id=?",
+                            (equipo["sede"], equipo["sn"], previo["id"]))
+            continue
+        con.execute(
             "INSERT OR IGNORE INTO cobertura_escaneos"
-            "(periodo, sede, sn, job_id, owner_id, escaneado_en,"
-            " duplicado, duplicado_de)"
-            " VALUES(?,?,?,?,?,?,?,?)",
-            (periodo, sede, sn, job_id, int(job["owner_id"]), escaneado_en,
-             1 if previo else 0, previo["id"] if previo else None),
+            "(periodo,sede,sn,job_id,owner_id,escaneado_en,documento) VALUES(?,?,?,?,?,?,?)",
+            (periodo, equipo["sede"], equipo["sn"], f["job_id"], f["owner_id"], f["escaneado_en"], f["documento"]),
         )
-        nuevos += 1 if cur.rowcount else 0
+        existentes[clave] = con.execute(
+            "SELECT * FROM cobertura_escaneos WHERE periodo=? AND sede=? AND sn=? AND job_id=?",
+            (periodo, equipo["sede"], equipo["sn"], f["job_id"]),
+        ).fetchone()
+    recalcular_duplicados(con)
+
+
+def _guardar_lecturas_job(con: sqlite3.Connection, job) -> None:
+    if job["status"] != "done":
+        return
+    periodo = periodo_de(job["finished_at"] or job["created_at"])
+    for f in con.execute("SELECT DISTINCT sn FROM job_pages WHERE job_id=? AND COALESCE(sn,'')<>''"
+                         " AND COALESCE(estado,'')<>'DESCARTADA'", (job["id"],)).fetchall():
+        con.execute("INSERT OR IGNORE INTO cobertura_lecturas VALUES(?,?,?,?,?,?)",
+                    (job["id"], f["sn"], periodo, job["owner_id"],
+                     job["finished_at"] or job["created_at"], job["filename"]))
+
+
+def registrar_cobertura_job(con: sqlite3.Connection, job_id: str) -> int:
+    job = job_por_id(con, job_id)
+    if not job or job["status"] != "done":
+        return 0
+    antes = con.execute("SELECT COUNT(*) FROM cobertura_escaneos").fetchone()[0]
+    _guardar_lecturas_job(con, job)
+    reconciliar_cobertura(con, periodo_de(job["finished_at"] or job["created_at"]))
     con.commit()
-    return nuevos
+    return con.execute("SELECT COUNT(*) FROM cobertura_escaneos").fetchone()[0] - antes
 
 
 def backfill_cobertura(con: sqlite3.Connection, periodo: str) -> None:
-    """Reconstruye cobertura de jobs terminados del periodo (una vez por mes).
-
-    Si una sede/mes fue reiniciada, no se rellenan los jobs viejos: el administrador
-    quiere volver a procesar desde cero. Los jobs nuevos se registran al terminar.
-    """
-    ya = con.execute(
-        "SELECT 1 FROM cobertura_meta WHERE periodo=?", (periodo,)
-    ).fetchone()
-    if ya:
-        return
-    jobs = con.execute(
-        "SELECT id, finished_at FROM jobs WHERE status='done'"
-        " AND finished_at IS NOT NULL ORDER BY finished_at"
-    ).fetchall()
-    for job in jobs:
-        if periodo_de(job["finished_at"]) != periodo:
-            continue
-        reset = con.execute(
-            "SELECT 1 FROM cobertura_resets r"
-            " JOIN equipos e ON e.sede=r.sede"
-            " JOIN job_pages jp ON jp.sn=e.sn"
-            " WHERE r.periodo=? AND jp.job_id=? LIMIT 1",
-            (periodo, job["id"]),
-        ).fetchone()
-        if reset:
-            continue
-        registrar_cobertura_job(con, job["id"])
-    con.execute(
-        "INSERT OR IGNORE INTO cobertura_meta(periodo, backfill_en)"
-        " VALUES(?,?)", (periodo, ahora()),
-    )
+    # Idempotente. Permite recuperar registros tras fallos y altas de inventario,
+    # incluso si una consulta anterior ya marcó el mes como rellenado.
+    for job in con.execute("SELECT * FROM jobs WHERE status='done' ORDER BY finished_at").fetchall():
+        if periodo_de(job["finished_at"] or job["created_at"]) == periodo:
+            _guardar_lecturas_job(con, job)
+    reconciliar_cobertura(con, periodo)
+    con.execute("INSERT OR REPLACE INTO cobertura_meta VALUES(?,?)", (periodo, ahora()))
     con.commit()
 
 
+def actualizar_cobertura_inventario(con: sqlite3.Connection) -> None:
+    # Sólo se reconcilia el mes abierto. Las sedes y equipos de meses cerrados
+    # proceden de su copia histórica, nunca del inventario actual.
+    backfill_cobertura(con, periodo_de())
+
+
 def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str, Any]:
-    esperados = con.execute(
-        "SELECT sn, marca, modelo, zona, domicilio, ubicacion, piso,"
-        " estatus, contador_inicial FROM equipos WHERE sede=? ORDER BY ubicacion, sn",
-        (sede,),
-    ).fetchall()
+    asegurar_inventario_periodo(con, periodo)
+    meta = con.execute("SELECT * FROM cobertura_periodos WHERE periodo=?", (periodo,)).fetchone()
+    esperados = [json.loads(f["datos"]) for f in con.execute(
+        "SELECT datos FROM cobertura_inventario WHERE periodo=? AND sede=? ORDER BY sn", (periodo, sede))]
     escaneos = con.execute(
         "SELECT c.*, COALESCE(u.display_name,u.name,u.email) AS usuario,"
-        " j.filename AS documento"
+        " COALESCE(j.filename,c.documento) AS documento, (j.id IS NULL) AS archivo_eliminado"
         " FROM cobertura_escaneos c"
         " LEFT JOIN users u ON u.id=c.owner_id"
         " LEFT JOIN jobs j ON j.id=c.job_id"
@@ -629,7 +709,7 @@ def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str
         " ORDER BY c.escaneado_en DESC",
         (periodo, sede),
     ).fetchall()
-    escaneados = {f["sn"] for f in escaneos}
+    escaneados = {f["sn"] for f in escaneos} & {f["sn"] for f in esperados}
     equipos = []
     for f in esperados:
         fila = dict(f)
@@ -640,6 +720,9 @@ def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str
     return {
         "sede": sede,
         "periodo": periodo,
+        "cerrado": periodo < periodo_de(),
+        "inventario_origen": meta["origen"],
+        "inventario_capturado_en": meta["capturado_en"],
         "esperados": len(esperados),
         "escaneados": len(escaneados),
         "faltantes": faltantes,
@@ -655,6 +738,7 @@ def excluir_cobertura(con: sqlite3.Connection, cid: int, motivo: str) -> bool:
         " WHERE id=?",
         ((motivo or "Corrección administrativa")[:300], cid),
     )
+    recalcular_duplicados(con)
     con.commit()
     return cur.rowcount > 0
 
@@ -865,22 +949,40 @@ def sugerencias_ubicacion(
     return (exactas + cercanas)[:30]
 
 
-def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool, str]:
-    sn = normalizar_serial(sn)
-    if not sn:
-        raise ValueError("serial vacío")
+class SerialAmbiguo(ValueError):
+    pass
+
+
+class SerialInvalido(ValueError):
+    pass
+
+
+def buscar_equipo(con: sqlite3.Connection, sn: str):
+    original = (sn or "").strip().upper()
+    exacto = con.execute("SELECT * FROM equipos WHERE sn=?", (original,)).fetchone()
+    if exacto:
+        return exacto
+    filas = con.execute("SELECT * FROM equipos WHERE sn_norm=?", (normalizar_serial(sn),)).fetchall()
+    if len(filas) > 1:
+        raise SerialAmbiguo("Hay varias series parecidas. Usa la serie exacta del inventario.")
+    return filas[0] if filas else None
+
+
+def upsert_equipo(con: sqlite3.Connection, sn: str, *, reconciliar: bool = True, **campos: Any) -> tuple[bool, str]:
+    sn = (sn or "").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9 _-]{0,255}", sn):
+        raise SerialInvalido("La serie debe contener letras, números, espacios o guiones (máximo 256 caracteres).")
     # Evita duplicados lógicos Mx3.../MX3.../MX3...O...: reutiliza el serial
     # existente en lugar de insertar una segunda fila.
-    existente = con.execute(
-        "SELECT sn FROM equipos WHERE sn_norm=?", (sn,)
-    ).fetchone()
+    existente = buscar_equipo(con, sn)
     if existente:
         sn = existente["sn"]
     existia = con.execute("SELECT 1 FROM equipos WHERE sn=?", (sn,)).fetchone() is not None
     if "ubicacion" in campos:
         campos["ubicacion"] = re.sub(r"\s+", " ", str(campos["ubicacion"] or "")).strip()
     cols = ["sn", "sn_norm", "ubicacion_norm"] + [c for c in CAMPOS_EQUIPO if c in campos]
-    vals = [sn, sn, normalizar_ubicacion(campos.get("ubicacion", ""))]
+    ubicacion = campos.get("ubicacion", existente["ubicacion"] if existente else "")
+    vals = [sn, normalizar_serial(sn), normalizar_ubicacion(ubicacion)]
     vals += [("" if campos.get(c) is None else str(campos.get(c))) for c in cols[3:]]
     sets = ", ".join(f"{c}=excluded.{c}" for c in cols[1:])
     sufijo = (f" ON CONFLICT(sn) DO UPDATE SET {sets},"
@@ -890,12 +992,15 @@ def upsert_equipo(con: sqlite3.Connection, sn: str, **campos: Any) -> tuple[bool
         f" VALUES({','.join('?' * len(cols))}, datetime('now'))" + sufijo,
         vals,
     )
+    if reconciliar:
+        actualizar_cobertura_inventario(con)
     con.commit()
     return (not existia), sn
 
 
 def borrar_equipo(con: sqlite3.Connection, sn: str) -> bool:
     cur = con.execute("DELETE FROM equipos WHERE sn=?", ((sn or "").strip().upper(),))
+    actualizar_cobertura_inventario(con)
     con.commit()
     return cur.rowcount > 0
 
@@ -904,6 +1009,7 @@ def borrar_equipos(con: sqlite3.Connection, **filtros) -> int:
     """Borra todo lo que coincida. Sin filtros equivale a vaciar el inventario."""
     where, params = _filtros_equipos(**filtros)
     cur = con.execute(f"DELETE FROM equipos{where}", params)
+    actualizar_cobertura_inventario(con)
     con.commit()
     return int(cur.rowcount or 0)
 

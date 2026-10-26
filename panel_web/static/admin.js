@@ -1014,6 +1014,7 @@ async function guardarEquipo(evento) {
     set("inv-form-status", d.ok
       ? `${d.creado ? "Alta" : "Actualizado"} ${d.sn} · ${d.total} seriales`
       : d.detalle || "No se pudo exportar el Excel.");
+    if (!d.ok) return;
     limpiarFormulario();
     cerrarModalInventario();
     await cargarInventario();

@@ -1,5 +1,7 @@
 # Cobertura mensual y faltantes — diseño
 
+> Actualización: consultar [correcciones implementadas](CORRECCIONES_COBERTURA_2026-10-25.md) para la conservación histórica, cierre de inventario mensual y reconciliación. Las propuestas de este documento no sustituyen ese comportamiento.
+
 **Estado:** primera versión implementada (cobertura, faltantes y asignación de sedes); pendientes de validar con datos reales.
 **Fecha:** 2026-10-25.
 

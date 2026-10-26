@@ -152,6 +152,45 @@ class SeguridadHTTPTest(unittest.TestCase):
             self.assertEqual(r.status_code, 403)
         self.assertEqual(self.client.get("/api/jobs/job-ana").status_code, 200)
 
+    def test_pdf_repetido_requiere_confirmacion_y_no_expone_otro_usuario(self):
+        self.sesion()
+        pdf = self.pdf()
+        def subir(**kwargs):
+            return self.client.post('/api/jobs', headers=self.headers(),
+                files={'archivo': ('igual.pdf', pdf, 'application/pdf')}, **kwargs)
+        primero = subir()
+        self.assertEqual(primero.status_code, 201, primero.text)
+        repetido = subir()
+        self.assertEqual(repetido.status_code, 409, repetido.text)
+        self.assertEqual(repetido.json()['detail']['codigo'], 'pdf_repetido')
+        self.assertEqual(len(self.client.get('/api/jobs').json()['jobs']), 2)
+        confirmado = subir(data={'reprocesar': 'true'})
+        self.assertEqual(confirmado.status_code, 201, confirmado.text)
+        self.sesion(self.beto)
+        ajeno = subir()
+        self.assertEqual(ajeno.status_code, 201, ajeno.text)
+
+    def test_serial_normalizado_no_permite_mover_equipo_ajeno(self):
+        con = db.conectar(main.settings.db_path)
+        try:
+            db.asignar_sedes(con, self.ana['id'], ['A'])
+            db.upsert_equipo(con, 'ABC-123', sede='B')
+            con.execute('UPDATE equipos SET sn_norm=NULL')
+            con.commit()
+        finally:
+            con.close()
+        db.inicializar(main.settings.db_path)
+        self.sesion()
+        for sn in ('ABC-123', 'ABC123'):
+            r = self.client.post('/api/equipos', headers=self.headers(),
+                                 json={'sn': sn, 'sede': 'A'})
+            self.assertEqual(r.status_code, 403, r.text)
+        con = db.conectar(main.settings.db_path)
+        try:
+            self.assertEqual(db.buscar_equipo(con, 'ABC123')['sede'], 'B')
+        finally:
+            con.close()
+
     def test_subida_valida_y_descarga_del_dueno(self):
         self.sesion()
         r = self.client.post("/api/jobs", headers=self.headers(),

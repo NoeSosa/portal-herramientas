@@ -241,7 +241,7 @@ sys.path.insert(0, SEP_DIR)
 from separador_pdf import (normalizar_sn, generar_variantes_ocr,
                            identificar_modelo, ocr_rango, datos_uso_hp,
                            preparar_uso_hp, revisar_grupo_hp,
-                           extraer_serial_etiqueta, extraer_serial_generico)  # noqa: E402
+                           extraer_serial_etiqueta, extraer_serial_generico, es_pagina_blanca)  # noqa: E402
 
 
 def load_creds():
@@ -861,7 +861,7 @@ def procesar_pdf(ruta_pdf, idx, idx_norm):
                 log(f"[aviso] re-OCR rotado pág {num+1} falló: {e}")
 
         # Reverso/hoja en blanco: no debe generar un PDF "Sin_Identificar".
-        if len((txt or "").strip()) < 15:
+        if not (txt or "").strip() and es_pagina_blanca(ruta_pdf, num):
             descartadas_blanco.append({
                 "num": num, "sn": "SIN_ID", "modelo": "?",
                 "razon": "página en blanco o reverso sin contenido",

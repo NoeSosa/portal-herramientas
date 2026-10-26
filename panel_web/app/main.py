@@ -8,6 +8,7 @@ inventario ni acceso a trabajos de otros usuarios.
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import logging
 import os
@@ -20,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import fitz
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -123,6 +124,16 @@ async def cabeceras_seguridad(request: Request, call_next):
         # revalidación para que un redeploy no deje assets viejos en caché.
         respuesta.headers["Cache-Control"] = "no-cache"
     return respuesta
+
+
+@app.exception_handler(db.SerialAmbiguo)
+async def serial_ambiguo(request: Request, exc: db.SerialAmbiguo):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(db.SerialInvalido)
+async def serial_invalido(request: Request, exc: db.SerialInvalido):
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)
@@ -406,7 +417,7 @@ async def salud() -> dict[str, Any]:
 async def yo(request: Request, usuario=Depends(usuario_actual)) -> dict[str, Any]:
     con = _conexion()
     try:
-        sedes = (db.listar_sedes(con) if usuario["role"] == "admin"
+        sedes = (db.listar_sedes_historicas(con) if usuario["role"] == "admin"
                  else db.sedes_usuario(con, int(usuario["id"])))
     finally:
         con.close()
@@ -451,13 +462,13 @@ async def cobertura(
     request: Request, periodo: str = "", sede: str = "",
     usuario=Depends(usuario_actual),
 ) -> dict[str, Any]:
-    if periodo and not re.fullmatch(r"\d{4}-\d{2}", periodo):
+    if periodo and (not re.fullmatch(r"\d{4}-(?:0[1-9]|1[0-2])", periodo) or periodo > db.periodo_de()):
         raise HTTPException(status_code=400, detail="Periodo inválido; usa YYYY-MM.")
     periodo = periodo or db.periodo_de()
     con = _conexion()
     try:
         if usuario["role"] == "admin":
-            sedes = [sede] if sede else db.listar_sedes(con)
+            sedes = [sede] if sede else db.listar_sedes_historicas(con)
             db.backfill_cobertura(con, periodo)
             datos = [db.cobertura_sede(con, s, periodo) for s in sedes]
             return {
@@ -496,16 +507,16 @@ async def guardar_equipo_usuario(
 ) -> dict[str, Any]:
     datos = entrada.model_dump(exclude_unset=True)
     sn = (datos.get("sn") or "").strip()
-    if not sn:
+    if not db.normalizar_serial(sn):
         raise HTTPException(status_code=400, detail="Falta el serial.")
     con = _conexion()
     try:
         permitidas = None if usuario["role"] == "admin" else set(
             db.sedes_usuario(con, int(usuario["id"]))
         )
-        existente = con.execute(
-            "SELECT sn, sede FROM equipos WHERE sn_norm=?", (db.normalizar_serial(sn),)
-        ).fetchone()
+        # La autorización y la escritura observan la misma versión del equipo.
+        con.execute("BEGIN IMMEDIATE")
+        existente = db.buscar_equipo(con, sn)
         sede = (datos.get("sede") or "").strip()
         if existente:
             if permitidas is not None and (existente["sede"] or "") not in permitidas:
@@ -545,6 +556,7 @@ async def guardar_equipo_usuario(
 async def crear_job(
     request: Request,
     archivo: UploadFile = File(...),
+    reprocesar: bool = Form(False),
     usuario=Depends(usuario_actual),
     _csrf=Depends(verificar_csrf),
 ) -> dict[str, Any]:
@@ -556,6 +568,19 @@ async def crear_job(
         )
 
     contenido = await archivo.read(settings.max_upload_bytes + 1)
+    if len(contenido) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="El PDF supera el tamaño permitido.")
+    huella = hashlib.sha256(contenido).hexdigest()
+    con = _conexion()
+    try:
+        previo = db.job_por_hash(con, uid, huella)
+        if previo and not reprocesar:
+            raise HTTPException(status_code=409, detail={
+                "codigo": "pdf_repetido", "job_id": previo["id"],
+                "mensaje": "Este mismo PDF ya está en tus documentos. ¿Quieres procesarlo otra vez?",
+            })
+    finally:
+        con.close()
     # PyMuPDF es CPU-bound: no bloquear el event loop con un PDF grande.
     paginas, avisos_pdf = await run_in_threadpool(_validar_pdf, contenido)
     nombre = _nombre_seguro(archivo.filename)
@@ -607,6 +632,7 @@ async def crear_job(
             size=len(contenido),
             pages=paginas,
             client_ip=ip_cliente(request),
+            file_hash=huella,
         )
         db.auditar(
             con,
@@ -745,7 +771,7 @@ async def resultado_job(
                     "ruta": info.filename,
                     "bytes": info.file_size,
                     "estado": estado,
-                    "serial": nombre.split("__", 1)[0],
+                    "serial": Path(nombre).stem.split("__", 1)[0],
                 })
     except (OSError, zipfile.BadZipFile):
         raise HTTPException(status_code=500, detail="No se pudo abrir el ZIP.") from None
@@ -1007,6 +1033,7 @@ async def admin_job_ocr(
         if ev.get("tipo") == "ocr_pagina" and not ev.get("parcial")
     ]
     elegidos: list[dict[str, Any]] = []
+    parcial = False
     if finales:
         elegidos = [max(finales, key=lambda ev: float(ev.get("ts") or 0))]
         parcial = False

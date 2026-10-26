@@ -1790,3 +1790,12 @@ h1 {
 [aria-busy="true"] {
   cursor: progress;
 }
+
+/* Lectura cotidiana: los datos y los controles no deben exigir zoom. */
+.coverage-table th { font-size: 12px; }
+.coverage-table td { font-size: 14px; line-height: 1.5; }
+.coverage-history { font: 400 14px/1.5 var(--sans); color: var(--muted); margin: 0 0 16px; }
+.equipo-form-grid label { font-size: 12px; letter-spacing: .02em; }
+.equipo-form-grid input, .equipo-form-grid select { font-size: 16px; min-height: 40px; }
+.location-hint, .location-chip, .status-pill { font-size: 12px; }
+.coverage-tools .btn-text, .coverage-table .btn-text { min-height: 40px; }

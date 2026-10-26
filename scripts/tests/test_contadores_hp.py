@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FUNCTIONS = {
     'normalizar_sn', 'generar_variantes_ocr', 'validar_sn_contra_inventario',
     'modelo_hp_nuevo', 'datos_uso_hp', 'preparar_uso_hp', 'revisar_grupo_hp',
-    'extraer_serial_etiqueta', 'extraer_serial_generico', '_serial_valido',
+    'extraer_serial_etiqueta', 'extraer_serial_generico', '_serial_valido', 'es_pagina_blanca',
     'identificar_modelo', 'fase_logica', 'procesar_pdf', 'buscar_serial', 'texto_es_util',
 }
 
@@ -65,7 +65,9 @@ def run_auto(logic, tmp_path, texts, serials=('MX3CV6Q0Z',)):
     path = tmp_path / 'entrada.pdf'
     with fitz.open() as doc:
         for n in range(len(texts)):
-            doc.new_page().insert_text((50, 50), f'Hoja origen {n + 1}')
+            page = doc.new_page()
+            if texts[n]:
+                page.insert_text((50, 50), f'Hoja origen {n + 1}')
         doc.save(path)
     logic['ocr_rango'] = lambda *args: [dict(num=n, texto=t) for n, t in enumerate(texts)]
     idx = inventory(*serials)
@@ -175,6 +177,28 @@ def test_layout_22_hojas_muestra(logic, tmp_path):
     assert len(result['descartadas']) == 15
     assert not result['verificar']
     assert sum(len(p['paginas']) for p in result['ok'] + result['verificar']) + len(result['descartadas']) == 22
+
+
+def test_serial_corto_no_se_descarta(logic, tmp_path):
+    sn = 'VNB0B01234'
+    result = run_auto(logic, tmp_path, [sn], (sn,))
+    assert not result['descartadas']
+    assert (result['ok'] + result['verificar'])[0]['sn'] == sn
+    _, _, groups = logic['fase_logica'](str(tmp_path / 'entrada.pdf'), {0: sn},
+                                       str(tmp_path / 'salida'), {sn: sn})
+    assert groups and groups[0]['sn'] == sn
+
+
+def test_ocr_vacio_con_tinta_se_conserva(logic, tmp_path):
+    run_auto(logic, tmp_path, ['Contenido visible'])
+    path = str(tmp_path / 'entrada.pdf')
+    assert not logic['es_pagina_blanca'](path, 0)
+    logic['ocr_rango'] = lambda *args: [dict(num=0, texto='')]
+    result = logic['procesar_pdf'](path, {}, {})
+    assert not result['descartadas']
+    assert result['verificar']
+    _, _, groups = logic['fase_logica'](path, {0: ''}, str(tmp_path / 'salida'), {})
+    assert groups
 
 
 def test_helpers_identicos_en_ambos_motores():

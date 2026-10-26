@@ -516,6 +516,18 @@ def ocr_rango(ruta_pdf, pag_inicio, pag_fin, dpi, cpu_threads=1, ocr=None):
 # ==========================================
 # FASE 2: lógica topológica + generación de PDFs
 # ==========================================
+def es_pagina_blanca(ruta_pdf, num_pagina):
+    """Comprueba la imagen; un fallo OCR nunca basta para descartar una hoja."""
+    try:
+        with fitz.open(ruta_pdf) as doc:
+            pix = doc.load_page(num_pagina).get_pixmap(dpi=72, colorspace=fitz.csGRAY, alpha=False)
+            muestras = pix.samples
+            # Umbral conservador: cualquier trazo apreciable obliga a revisar.
+            return bool(muestras) and sum(v < 235 for v in muestras) / len(muestras) < 0.00002
+    except Exception:
+        return False
+
+
 def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
     """textos_paginas: dict {num_pagina: texto}. Corre toda la lógica del original."""
     total_pag = max(textos_paginas.keys()) + 1 if textos_paginas else 0
@@ -531,7 +543,7 @@ def fase_logica(ruta_pdf, textos_paginas, carpeta_salida, sns_esperados):
     for num_pagina in sorted(textos_paginas.keys()):
         texto_pagina = textos_paginas[num_pagina]
         # Hojas en blanco/reverso: no generan un PDF "Sin_Identificar".
-        if len((texto_pagina or "").strip()) < 15:
+        if not (texto_pagina or "").strip() and es_pagina_blanca(ruta_pdf, num_pagina):
             continue
 
         sn_encontrado = validar_sn_contra_inventario(texto_pagina, sns_esperados)

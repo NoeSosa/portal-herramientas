@@ -102,9 +102,6 @@ def importar_xlsx(con: sqlite3.Connection, ruta: Path) -> dict[str, int]:
                 sn = _texto(fila[cabecera["sn"]]).upper() if cabecera["sn"] < len(fila) else ""
                 if not sn or sn in {"NAN", "NONE", "0"}:
                     continue
-                existia = con.execute(
-                    "SELECT 1 FROM equipos WHERE sn=?", (sn,)
-                ).fetchone() is not None
                 def valor(campo: str) -> str:
                     idx = cabecera.get(campo)
                     if idx is None or idx >= len(fila):
@@ -122,14 +119,16 @@ def importar_xlsx(con: sqlite3.Connection, ruta: Path) -> dict[str, int]:
                     "contador_inicial": valor("contador_inicial"),
                     "origen_hoja": f"{ruta.name}::{ws.title}",
                 }
-                db.upsert_equipo(con, sn, **datos)
+                creado, _ = db.upsert_equipo(con, sn, reconciliar=False, **datos)
                 leidos += 1
-                if existia:
+                if not creado:
                     actualizados += 1
                 else:
                     insertados += 1
     finally:
         wb.close()
+        # Una sola reconciliación por importación, no una por cada fila.
+        db.actualizar_cobertura_inventario(con)
     return {"leidos": leidos, "insertados": insertados,
             "actualizados": actualizados, "hojas": hojas}
 

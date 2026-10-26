@@ -199,7 +199,7 @@
           <input id="cov-periodo" class="month-input" type="month">
           <select id="cov-sede" class="month-input" aria-label="Sede"></select>
           <button class="btn-text" type="button" id="cov-refresh">Actualizar ↻</button>
-          <button class="btn-text" type="button" id="cov-add">Agregar registro</button>
+          <button class="btn-text" type="button" id="cov-add">Agregar equipo</button>
           <button class="btn-text danger" type="button" id="cov-reset" hidden>Reiniciar mes</button>
         </div>
       </div>
@@ -209,6 +209,7 @@
       </div>
 
       <div id="cov-content">
+        <p id="cov-historia" class="coverage-history" role="status"></p>
         <div class="coverage-stats">
           <div><span class="mono-label">ESPERADOS</span><strong id="cov-esperados">—</strong></div>
           <div><span class="mono-label">ESCANEADOS</span><strong id="cov-escaneados">—</strong></div>
