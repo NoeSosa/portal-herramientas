@@ -292,32 +292,60 @@ def _nombre_seguro(nombre: str | None) -> str:
 
 _AVISOS_BLOQUEANTES = {"JavaScript", "JS", "Launch", "EmbeddedFile", "RichMedia"}
 
-_MARCAS_PDF_ACTIVO = (
-    (b"/JavaScript", "JavaScript"),
-    (b"/JS", "JS"),
-    (b"/Launch", "Launch"),
-    (b"/EmbeddedFile", "EmbeddedFile"),
-    (b"/RichMedia", "RichMedia"),
-    (b"/OpenAction", "OpenAction"),
-    (b"/AA", "AdditionalActions"),
-    (b"/XFA", "XFA"),
+_CLAVES_PDF_ACTIVAS = {
+    "JavaScript": "JavaScript",
+    "JS": "JS",
+    "Launch": "Launch",
+    "EmbeddedFile": "EmbeddedFile",
+    "RichMedia": "RichMedia",
+    "OpenAction": "OpenAction",
+    "AA": "AdditionalActions",
+    "XFA": "XFA",
+}
+
+_ACCIONES_PDF_ACTIVAS = (
+    ("/JavaScript", "JavaScript"),
+    ("/Launch", "Launch"),
+    ("/EmbeddedFile", "EmbeddedFile"),
+    ("/RichMedia", "RichMedia"),
 )
 
 
-def _avisos_pdf(contenido: bytes) -> list[str]:
-    """Detecta contenido activo obvio. No rechaza: solo deja rastro.
+def _avisos_pdf(doc, contenido: bytes) -> list[str]:
+    """Detecta contenido activo en la estructura PDF, no en bytes comprimidos.
 
-    Un PDF escaneado normal no debería traer JavaScript, adjuntos ni acciones
-    automáticas. Se avisa para revisión, pero no se bloquea por posibles falsos
-    positivos (por ejemplo, texto que mencione `/JS`).
+    Buscar ``/JS`` con ``in contenido`` produce falsos positivos: los flujos de
+    imagen JPEG/Flate pueden contener esa secuencia por azar. Aquí se inspeccionan
+    claves de objeto y valores de acciones; los flujos de imagen no participan.
     """
-    avisos: list[str] = []
-    for marca, nombre in _MARCAS_PDF_ACTIVO:
-        if marca in contenido:
-            avisos.append(nombre)
+    avisos: set[str] = set()
+    try:
+        for xref in range(1, doc.xref_length()):
+            try:
+                claves = set(doc.xref_get_keys(xref))
+            except Exception:
+                continue
+            for clave, etiqueta in _CLAVES_PDF_ACTIVAS.items():
+                if clave in claves:
+                    avisos.add(etiqueta)
+            for clave in ("S", "Subtype"):
+                if clave not in claves:
+                    continue
+                try:
+                    valor = str(doc.xref_get_key(xref, clave)[1])
+                except Exception:
+                    continue
+                for marca, etiqueta in _ACCIONES_PDF_ACTIVAS:
+                    if marca in valor:
+                        avisos.add(etiqueta)
+        if doc.embfile_count():
+            avisos.add("EmbeddedFile")
+    except Exception:
+        # Si la inspección estructural falla, no se inventa una alerta.
+        pass
     if b"%%EOF" not in contenido[-4096:]:
-        avisos.append("sin %%EOF")
-    return sorted(set(avisos))
+        avisos.add("sin %%EOF")
+    return sorted(avisos)
 
 
 def _error_subida(
@@ -350,6 +378,7 @@ def _validar_pdf(contenido: bytes) -> tuple[int, list[str]]:
                 "El PDF está protegido con contraseña. Quita la protección antes de subirlo.",
             )
         paginas = int(doc.page_count)
+        avisos_pdf = _avisos_pdf(doc, contenido)
     except HTTPException:
         raise
     except Exception:
@@ -370,7 +399,7 @@ def _validar_pdf(contenido: bytes) -> tuple[int, list[str]]:
             400, "pdf_demasiadas_paginas",
             f"El PDF tiene {paginas} páginas y el máximo es {settings.max_pages}.",
         )
-    return paginas, _avisos_pdf(contenido)
+    return paginas, avisos_pdf
 
 
 def _job_publico(job: Any, stats: dict[str, int | float]) -> dict[str, Any]:
