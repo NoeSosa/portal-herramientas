@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from . import db
+from . import correccion_seriales, db
 from .config import Settings
 
 # El worker solo procesa archivos: no debe necesitar secretos OIDC o de sesión.
@@ -308,6 +308,10 @@ def procesar(job: Any) -> None:
             return
 
         zip_path = _zip_resultado(job_dir, salida)
+        try:
+            correccion_seriales.reparar_seriales_job(con, job_id, zip_path)
+        except Exception:
+            logger.exception("No se pudieron corregir seriales de %s", job_id)
         paginas = int(job["pages"] or 0)
         db.finalizar_job(con, job_id, str(zip_path), paginas)
         try:

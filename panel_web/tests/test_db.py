@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import zipfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from panel_web.app import db  # noqa: E402
+from panel_web.app import correccion_seriales, db  # noqa: E402
 
 
 class AislamientoTest(unittest.TestCase):
@@ -114,6 +115,59 @@ class AislamientoTest(unittest.TestCase):
         self.assertEqual(stats["pages_ahead"], 8)
         self.assertEqual(stats["posicion"], 1)
         self.assertEqual(stats["eta_seconds"], 130)
+
+
+class CorreccionSerialesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ruta = Path(self.tmp.name) / "panel.db"
+        db.inicializar(self.ruta)
+        self.con = db.conectar(self.ruta)
+        self.user = db.upsert_usuario(
+            self.con, "oid-fix", "fix@empresa.com", "Fix", "user",
+        )
+        self.uid = int(self.user["id"])
+        db.asignar_sedes(self.con, self.uid, ["Reynosa"])
+        db.upsert_equipo(self.con, "CNB1NDROXQ", sede="Reynosa", marca="HP")
+        db.crear_job(
+            self.con, job_id="job-fix", owner_id=self.uid,
+            owner_email=self.user["email"], filename="fix.pdf",
+            stored_name="fix.pdf", size=100, pages=1, client_ip=None,
+        )
+        db.upsert_pagina(self.con, "job-fix", 1, sn="CNBINDROXQ", estado="OK")
+        db.finalizar_job(self.con, "job-fix", str(Path(self.tmp.name) / "r.zip"), 1)
+        self.zip = Path(self.tmp.name) / "r.zip"
+        with zipfile.ZipFile(self.zip, "w") as z:
+            z.writestr("Reynosa/VERIFICADOS/CNBINDROXQ.pdf", b"pdf")
+            z.writestr(
+                "Reynosa/POR_VERIFICAR/CNBINDROXQ__HP__de_fix.pdf", b"pdf",
+            )
+
+    def tearDown(self) -> None:
+        self.con.close()
+        self.tmp.cleanup()
+
+    def test_renombra_job_pages_y_zip(self) -> None:
+        resultado = correccion_seriales.reparar_seriales_job(
+            self.con, "job-fix", self.zip,
+        )
+        self.assertEqual(resultado["cambiados"], {"CNBINDROXQ": "CNB1NDROXQ"})
+        with zipfile.ZipFile(self.zip) as z:
+            nombres = sorted(z.namelist())
+        self.assertEqual(nombres, [
+            "Reynosa/POR_VERIFICAR/CNB1NDROXQ__HP__de_fix.pdf",
+            "Reynosa/VERIFICADOS/CNB1NDROXQ.pdf",
+        ])
+        fila = self.con.execute(
+            "SELECT sn FROM job_pages WHERE job_id='job-fix'",
+        ).fetchone()
+        self.assertEqual(fila["sn"], "CNB1NDROXQ")
+        # Idempotente.
+        resultado = correccion_seriales.reparar_seriales_job(
+            self.con, "job-fix", self.zip,
+        )
+        self.assertFalse(resultado["cambiados"])
+        self.assertFalse(resultado["zip"])
 
 
 class CoberturaTest(unittest.TestCase):

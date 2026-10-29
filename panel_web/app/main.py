@@ -37,6 +37,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import __version__, db, inventario
 from .peticiones import GuardiaPeticiones
 from .esquemas import BorradoEquiposEntrada, EquipoEntrada
+from .correccion_seriales import reparar_seriales_job
 from .normalizacion import normalizar_serial, normalizar_serial_alterno
 from .auth import (
     autenticar_callback,
@@ -778,6 +779,10 @@ async def descargar(
         ruta = Path(job["result_path"]).resolve()
         if not ruta.is_relative_to(settings.data_dir.resolve()) or not ruta.is_file():
             raise HTTPException(status_code=404, detail="Resultado no encontrado.")
+        try:
+            reparar_seriales_job(con, job_id, ruta)
+        except Exception:
+            logger.exception("No se pudieron corregir seriales de %s", job_id)
         db.auditar(
             con,
             user_id=int(usuario["id"]),
@@ -813,6 +818,10 @@ async def resultado_job(
             raise HTTPException(status_code=404, detail="Documento no encontrado.")
         if job["status"] != "done" or not job["result_path"]:
             raise HTTPException(status_code=409, detail="El resultado todavía no está listo.")
+        try:
+            reparar_seriales_job(con, job_id, job["result_path"])
+        except Exception:
+            logger.exception("No se pudieron corregir seriales de %s", job_id)
         filas = con.execute(
             "SELECT estado, sn, sede FROM job_pages WHERE job_id=?", (job_id,)
         ).fetchall()
@@ -917,6 +926,10 @@ async def descargar_documento(
         zip_path = Path(job["result_path"]).resolve()
         if not zip_path.is_relative_to(settings.data_dir.resolve()) or not zip_path.is_file():
             raise HTTPException(status_code=404, detail="Resultado no encontrado.")
+        try:
+            reparar_seriales_job(con, job_id, zip_path)
+        except Exception:
+            logger.exception("No se pudieron corregir seriales de %s", job_id)
         with zipfile.ZipFile(zip_path) as z:
             try:
                 info = z.getinfo(ruta)
