@@ -57,13 +57,24 @@ def normalizar_serial(serial: str) -> str:
 
 
 def normalizar_serial_alterno(serial: str) -> str:
-    """Segunda verificación para confusiones OCR O/0 en cualquier posición.
+    """Segunda verificación para confusiones OCR frecuentes en cualquier posición.
 
     No sustituye la clave primaria: sólo se usa cuando ésta no encontró una
-    coincidencia única. Así `VNBOB04743` puede verificar contra `VNB0B04743`
-    sin fusionar por sí solo dos series distintas.
+    coincidencia única. Cubre O/0, I/L/1 y S/5, por ejemplo:
+
+      VNBOB04743 -> VNB0B04743
+      CNBINDROXQ -> CNB1NDR0XQ
+      HPS40A92   -> HP540A92
+
+    Si la variante coincide con más de una serie del inventario, se marca como
+    ambigua y no se elige automáticamente.
     """
-    return normalizar_serial(serial).replace("O", "0")
+    return normalizar_serial(serial).translate(str.maketrans({
+        "O": "0",
+        "I": "1",
+        "L": "1",
+        "S": "5",
+    }))
 
 
 def normalizar_ubicacion(ubicacion: str) -> str:

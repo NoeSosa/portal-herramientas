@@ -839,8 +839,7 @@ async def resultado_job(
             coincidencias = primario.get(normalizar_serial(sn), [])
             if not coincidencias:
                 alterna = normalizar_serial_alterno(sn)
-                if alterna != normalizar_serial(sn):
-                    coincidencias = alterno.get(alterna, [])
+                coincidencias = alterno.get(alterna, [])
             if len(coincidencias) == 1:
                 fila = coincidencias[0]
                 sede = fila["sede"] or ""

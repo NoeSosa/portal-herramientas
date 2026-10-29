@@ -213,6 +213,25 @@ class CoberturaTest(unittest.TestCase):
         self.assertEqual(datos["escaneados"], 1)
         self.assertEqual(datos["sedes"][0]["detalle_escaneos"][0]["sn"], "VNB0B04743")
 
+    def test_verificacion_ocr_i_uno_y_s_cinco(self) -> None:
+        db.upsert_equipo(self.con, "CNB1NDROXQ", sede="Reynosa")
+        db.upsert_equipo(self.con, "HPS40A92", sede="Reynosa")
+        self.assertEqual(
+            db.buscar_equipo(self.con, "CNBINDROXQ")["sn"],
+            "CNB1NDROXQ",
+        )
+        self.assertEqual(
+            db.buscar_equipo(self.con, "HP540A92")["sn"],
+            "HPS40A92",
+        )
+        self.job("j-cnb", "CNBINDROXQ")
+        datos = db.cobertura_para_usuario(self.con, self.uid, db.periodo_de())
+        self.assertEqual(datos["escaneados"], 1)
+        self.assertEqual(
+            datos["sedes"][0]["detalle_escaneos"][0]["sn"],
+            "CNB1NDROXQ",
+        )
+
     def test_reset_no_reinyecta_jobs_viejos(self) -> None:
         db.upsert_equipo(self.con, "AAA111", sede="Reynosa")
         db.upsert_equipo(self.con, "BBB222", sede="Reynosa")

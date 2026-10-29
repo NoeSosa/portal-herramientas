@@ -651,8 +651,7 @@ def reconciliar_cobertura(con: sqlite3.Connection, periodo: str) -> None:
         candidatos = indice.get(clave_lectura, [])
         if not candidatos:
             alterna = normalizar_serial_alterno(f["sn"])
-            if alterna != clave_lectura:
-                candidatos = indice.get(alterna, [])
+            candidatos = indice.get(alterna, [])
         # Una clave OCR ambigua nunca decide qué equipo se ha escaneado.
         if len(candidatos) != 1:
             continue
@@ -994,11 +993,10 @@ def buscar_equipo(con: sqlite3.Connection, sn: str):
     filas = con.execute("SELECT * FROM equipos WHERE sn_norm=?", (clave,)).fetchall()
     if not filas:
         alterna = normalizar_serial_alterno(sn)
-        if alterna != clave:
-            filas = [
-                f for f in con.execute("SELECT * FROM equipos").fetchall()
-                if normalizar_serial_alterno(f["sn"]) == alterna
-            ]
+        filas = [
+            f for f in con.execute("SELECT * FROM equipos").fetchall()
+            if normalizar_serial_alterno(f["sn"]) == alterna
+        ]
     if len(filas) > 1:
         raise SerialAmbiguo("Hay varias series parecidas. Usa la serie exacta del inventario.")
     return filas[0] if filas else None
