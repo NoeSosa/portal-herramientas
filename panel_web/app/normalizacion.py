@@ -56,6 +56,16 @@ def normalizar_serial(serial: str) -> str:
     return "".join(salida)
 
 
+def normalizar_serial_alterno(serial: str) -> str:
+    """Segunda verificación para confusiones OCR O/0 en cualquier posición.
+
+    No sustituye la clave primaria: sólo se usa cuando ésta no encontró una
+    coincidencia única. Así `VNBOB04743` puede verificar contra `VNB0B04743`
+    sin fusionar por sí solo dos series distintas.
+    """
+    return normalizar_serial(serial).replace("O", "0")
+
+
 def normalizar_ubicacion(ubicacion: str) -> str:
     """Clave canónica de una ubicación.
 

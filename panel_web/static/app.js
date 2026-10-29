@@ -445,7 +445,8 @@ function renderResumenSeriales(r) {
   }));
   const otras = r.otra_sede || [];
   const sinSede = r.sin_sede || [];
-  contenedor.hidden = !desconocidos.length && !otras.length && !sinSede.length;
+  const ambiguos = r.ambiguos || [];
+  contenedor.hidden = !desconocidos.length && !otras.length && !sinSede.length && !ambiguos.length;
 
   if (desconocidos.length) {
     const bloque = document.createElement("div");
@@ -487,6 +488,7 @@ function renderResumenSeriales(r) {
     texto.textContent = [
       r.mensaje_otra_sede || "",
       sinSede.length ? "Hay seriales sin sede en el inventario; avisa a administración." : "",
+      ambiguos.length ? "Hay seriales que coinciden con más de un equipo; revisa la serie exacta." : "",
     ].filter(Boolean).join(" ");
     bloque.append(titulo, texto);
     for (const item of otras) {
@@ -506,6 +508,16 @@ function renderResumenSeriales(r) {
       serial.textContent = sn;
       const nota = document.createElement("span");
       nota.textContent = "Sin sede asignada";
+      fila.append(serial, nota);
+      bloque.appendChild(fila);
+    }
+    for (const sn of ambiguos) {
+      const fila = document.createElement("div");
+      fila.className = "resumen-serial-row";
+      const serial = document.createElement("code");
+      serial.textContent = sn;
+      const nota = document.createElement("span");
+      nota.textContent = "Coincidencia ambigua";
       fila.append(serial, nota);
       bloque.appendChild(fila);
     }

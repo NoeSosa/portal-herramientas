@@ -17,7 +17,9 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .normalizacion import normalizar_serial, normalizar_ubicacion
+from .normalizacion import (
+    normalizar_serial, normalizar_serial_alterno, normalizar_ubicacion,
+)
 
 try:
     _TZ_CUOTA = ZoneInfo(os.environ.get("APP_TIMEZONE", "America/Mexico_City"))
@@ -621,7 +623,9 @@ def reconciliar_cobertura(con: sqlite3.Connection, periodo: str) -> None:
     asegurar_inventario_periodo(con, periodo, refrescar=True)
     indice = {}
     for f in con.execute("SELECT sn, sede FROM cobertura_inventario WHERE periodo=?", (periodo,)):
-        indice.setdefault(normalizar_serial(f["sn"]), []).append(f)
+        claves = {normalizar_serial(f["sn"]), normalizar_serial_alterno(f["sn"])}
+        for clave in claves:
+            indice.setdefault(clave, []).append(f)
     resets = {f["sede"]: f["reset_en"] for f in con.execute(
         "SELECT sede, reset_en FROM cobertura_resets WHERE periodo=?", (periodo,))}
     roles = {
@@ -643,7 +647,12 @@ def reconciliar_cobertura(con: sqlite3.Connection, periodo: str) -> None:
     for f in con.execute("SELECT * FROM cobertura_escaneos WHERE periodo=?", (periodo,)):
         existentes.setdefault((f["job_id"], normalizar_serial(f["sn"])), f)
     for f in con.execute("SELECT * FROM cobertura_lecturas WHERE periodo=? ORDER BY escaneado_en", (periodo,)).fetchall():
-        candidatos = indice.get(normalizar_serial(f["sn"]), [])
+        clave_lectura = normalizar_serial(f["sn"])
+        candidatos = indice.get(clave_lectura, [])
+        if not candidatos:
+            alterna = normalizar_serial_alterno(f["sn"])
+            if alterna != clave_lectura:
+                candidatos = indice.get(alterna, [])
         # Una clave OCR ambigua nunca decide qué equipo se ha escaneado.
         if len(candidatos) != 1:
             continue
@@ -981,7 +990,15 @@ def buscar_equipo(con: sqlite3.Connection, sn: str):
     exacto = con.execute("SELECT * FROM equipos WHERE sn=?", (original,)).fetchone()
     if exacto:
         return exacto
-    filas = con.execute("SELECT * FROM equipos WHERE sn_norm=?", (normalizar_serial(sn),)).fetchall()
+    clave = normalizar_serial(sn)
+    filas = con.execute("SELECT * FROM equipos WHERE sn_norm=?", (clave,)).fetchall()
+    if not filas:
+        alterna = normalizar_serial_alterno(sn)
+        if alterna != clave:
+            filas = [
+                f for f in con.execute("SELECT * FROM equipos").fetchall()
+                if normalizar_serial_alterno(f["sn"]) == alterna
+            ]
     if len(filas) > 1:
         raise SerialAmbiguo("Hay varias series parecidas. Usa la serie exacta del inventario.")
     return filas[0] if filas else None

@@ -202,6 +202,17 @@ class CoberturaTest(unittest.TestCase):
         db.upsert_usuario(self.con, "oid-cov", self.user["email"], "Nombre Entra", "user")
         self.assertEqual(db.usuario_por_id(self.con, self.uid)["display_name"], "Nombre propio")
 
+    def test_verificacion_alterna_o_cero(self) -> None:
+        db.upsert_equipo(self.con, "VNB0B04743", sede="Reynosa")
+        self.assertEqual(
+            db.buscar_equipo(self.con, "VNBOB04743")["sn"],
+            "VNB0B04743",
+        )
+        self.job("j-o-cero", "VNBOB04743")
+        datos = db.cobertura_para_usuario(self.con, self.uid, db.periodo_de())
+        self.assertEqual(datos["escaneados"], 1)
+        self.assertEqual(datos["sedes"][0]["detalle_escaneos"][0]["sn"], "VNB0B04743")
+
     def test_reset_no_reinyecta_jobs_viejos(self) -> None:
         db.upsert_equipo(self.con, "AAA111", sede="Reynosa")
         db.upsert_equipo(self.con, "BBB222", sede="Reynosa")

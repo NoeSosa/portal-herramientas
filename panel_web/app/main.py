@@ -37,6 +37,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import __version__, db, inventario
 from .peticiones import GuardiaPeticiones
 from .esquemas import BorradoEquiposEntrada, EquipoEntrada
+from .normalizacion import normalizar_serial, normalizar_serial_alterno
 from .auth import (
     autenticar_callback,
     cerrar_sesion,
@@ -791,6 +792,16 @@ async def descargar(
         con.close()
 
 
+def _inventario_normalizado(con) -> tuple[dict[str, list[Any]], dict[str, list[Any]]]:
+    """Índices primario y alterno O→0 del inventario, sin fusionar filas."""
+    primario: dict[str, list[Any]] = {}
+    alterno: dict[str, list[Any]] = {}
+    for fila in con.execute("SELECT sn, sede FROM equipos").fetchall():
+        primario.setdefault(normalizar_serial(fila["sn"]), []).append(fila)
+        alterno.setdefault(normalizar_serial_alterno(fila["sn"]), []).append(fila)
+    return primario, alterno
+
+
 @app.get("/api/jobs/{job_id}/resultado")
 async def resultado_job(
     job_id: str, usuario=Depends(usuario_actual)
@@ -815,14 +826,7 @@ async def resultado_job(
                 seriales.add(fila["sn"])
                 if fila["sede"]:
                     sede_lectura.setdefault(fila["sn"], fila["sede"])
-        inventario = {
-            f["sn"]: f["sede"] or ""
-            for f in con.execute(
-                "SELECT sn, sede FROM equipos WHERE sn IN (%s)"
-                % ",".join("?" * len(seriales)),
-                tuple(seriales),
-            ).fetchall()
-        } if seriales else {}
+        primario, alterno = _inventario_normalizado(con)
         es_admin = usuario["role"] == "admin"
         mis_sedes = (db.listar_sedes(con) if es_admin
                      else db.sedes_usuario(con, int(usuario["id"])))
@@ -830,19 +834,29 @@ async def resultado_job(
         desconocidos: list[dict[str, Any]] = []
         otra_sede: list[dict[str, Any]] = []
         sin_sede: list[str] = []
+        ambiguos: list[str] = []
         for sn in sorted(seriales):
-            if sn not in inventario:
-                no_inventario.append(sn)
-                sugerida = sede_lectura.get(sn, "")
-                if sugerida not in mis_sedes:
-                    sugerida = mis_sedes[0] if mis_sedes else ""
-                desconocidos.append({"sn": sn, "sede_sugerida": sugerida})
-            else:
-                sede = inventario[sn]
+            coincidencias = primario.get(normalizar_serial(sn), [])
+            if not coincidencias:
+                alterna = normalizar_serial_alterno(sn)
+                if alterna != normalizar_serial(sn):
+                    coincidencias = alterno.get(alterna, [])
+            if len(coincidencias) == 1:
+                fila = coincidencias[0]
+                sede = fila["sede"] or ""
                 if not sede:
-                    sin_sede.append(sn)
+                    sin_sede.append(fila["sn"])
                 elif not es_admin and sede not in mis_sedes:
-                    otra_sede.append({"sn": sn, "sede": sede})
+                    otra_sede.append({"sn": fila["sn"], "sede": sede})
+                continue
+            if len(coincidencias) > 1:
+                ambiguos.append(sn)
+                continue
+            no_inventario.append(sn)
+            sugerida = sede_lectura.get(sn, "")
+            if sugerida not in mis_sedes:
+                sugerida = mis_sedes[0] if mis_sedes else ""
+            desconocidos.append({"sn": sn, "sede_sugerida": sugerida})
     finally:
         con.close()
 
@@ -879,6 +893,7 @@ async def resultado_job(
             "desconocidos": desconocidos,
             "otra_sede": otra_sede,
             "sin_sede": sin_sede,
+            "ambiguos": ambiguos,
             "puede_agregar": bool(mis_sedes),
             "mis_sedes": mis_sedes,
             "mensaje_otra_sede": (
