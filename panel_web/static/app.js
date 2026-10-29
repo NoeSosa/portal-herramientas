@@ -10,9 +10,13 @@ const estado = {
   sedes: [],
   role: "user",
   nombre: "",
+  limits: {},
   cobertura: null,
   coberturaPeriodo: "",
   coberturaSede: "",
+  sedePreferida: "",
+  coberturaOrden: { campo: "", direccion: 1 },
+  resumenJob: null,
   jobsVistos: new Map(),
   jobsInicializado: false,
 };
@@ -206,7 +210,11 @@ function actualizarChipsCobertura() {
   if (q) {
     filtros.push({
       label: `Buscar: ${q}`,
-      quitar: () => { $("cov-buscar").value = ""; renderCobertura(); },
+      quitar: () => {
+        $("cov-buscar").value = "";
+        renderCobertura();
+        guardarFiltrosCobertura();
+      },
     });
   }
   const pares = [
@@ -221,7 +229,11 @@ function actualizarChipsCobertura() {
     const texto = select.options[select.selectedIndex]?.textContent || select.value;
     filtros.push({
       label: `${etiqueta}: ${texto}`,
-      quitar: () => { select.value = ""; renderCobertura(); },
+      quitar: () => {
+        select.value = "";
+        renderCobertura();
+        guardarFiltrosCobertura();
+      },
     });
   }
   pintarChips($("cov-filtros-activos"), filtros);
@@ -233,6 +245,7 @@ function limpiarFiltrosCobertura() {
     $(id).value = "";
   }
   renderCobertura();
+  guardarFiltrosCobertura();
 }
 
 function claseEstatus(estatus) {
@@ -416,17 +429,99 @@ async function guardarEquipoUsuario(evento) {
     $("equipo-dialog").close();
     toast(`${d.creado ? "Equipo agregado" : "Equipo actualizado"}: ${d.sn}`, "ok");
     await cargarCobertura(true);
+    if (estado.resumenJob && $("resultado-dialog").open) {
+      await abrirResumen(estado.resumenJob);
+    }
   } catch (error) {
     setEqStatus(error.message);
   }
 }
 
+function renderResumenSeriales(r) {
+  const contenedor = $("resumen-seriales");
+  contenedor.textContent = "";
+  const desconocidos = r.desconocidos || (r.no_inventario || []).map((sn) => ({
+    sn, sede_sugerida: "",
+  }));
+  const otras = r.otra_sede || [];
+  const sinSede = r.sin_sede || [];
+  contenedor.hidden = !desconocidos.length && !otras.length && !sinSede.length;
+
+  if (desconocidos.length) {
+    const bloque = document.createElement("div");
+    bloque.className = "resumen-serial-group";
+    const titulo = document.createElement("h3");
+    titulo.textContent = "Seriales no inventariados";
+    const ayuda = document.createElement("p");
+    ayuda.textContent = r.puede_agregar
+      ? "Puedes agregarlos a una de tus sedes asignadas. Revisa ubicación y piso antes de guardar."
+      : "No tienes una sede asignada; pide a administración que asocie tu cuenta.";
+    bloque.append(titulo, ayuda);
+    for (const item of desconocidos) {
+      const fila = document.createElement("div");
+      fila.className = "resumen-serial-row";
+      const serial = document.createElement("code");
+      serial.textContent = item.sn;
+      fila.appendChild(serial);
+      if (r.puede_agregar) {
+        const boton = document.createElement("button");
+        boton.type = "button";
+        boton.className = "btn-text";
+        boton.textContent = "Agregar al inventario";
+        boton.addEventListener("click", () => {
+          abrirEquipoForm({ sn: item.sn, sede: item.sede_sugerida || "" });
+        });
+        fila.appendChild(boton);
+      }
+      bloque.appendChild(fila);
+    }
+    contenedor.appendChild(bloque);
+  }
+
+  if (otras.length || sinSede.length) {
+    const bloque = document.createElement("div");
+    bloque.className = "resumen-serial-group resumen-serial-alert";
+    const titulo = document.createElement("h3");
+    titulo.textContent = "Seriales fuera de tu alcance";
+    const texto = document.createElement("p");
+    texto.textContent = [
+      r.mensaje_otra_sede || "",
+      sinSede.length ? "Hay seriales sin sede en el inventario; avisa a administración." : "",
+    ].filter(Boolean).join(" ");
+    bloque.append(titulo, texto);
+    for (const item of otras) {
+      const fila = document.createElement("div");
+      fila.className = "resumen-serial-row";
+      const serial = document.createElement("code");
+      serial.textContent = item.sn;
+      const sede = document.createElement("span");
+      sede.textContent = `Sede ${item.sede}`;
+      fila.append(serial, sede);
+      bloque.appendChild(fila);
+    }
+    for (const sn of sinSede) {
+      const fila = document.createElement("div");
+      fila.className = "resumen-serial-row";
+      const serial = document.createElement("code");
+      serial.textContent = sn;
+      const nota = document.createElement("span");
+      nota.textContent = "Sin sede asignada";
+      fila.append(serial, nota);
+      bloque.appendChild(fila);
+    }
+    contenedor.appendChild(bloque);
+  }
+}
+
 async function abrirResumen(job) {
+  estado.resumenJob = job;
   $("resumen-nombre").textContent = job.filename;
   $("resumen-texto").textContent = "Cargando resultado…";
   $("resumen-aviso").hidden = true;
+  $("resumen-seriales").hidden = true;
   $("resumen-documentos").textContent = "";
-  $("resultado-dialog").showModal();
+  const dialogo = $("resultado-dialog");
+  if (!dialogo.open) dialogo.showModal();
   try {
     const d = await api(`/api/jobs/${encodeURIComponent(job.id)}/resultado`);
     const r = d.resumen || {};
@@ -438,8 +533,12 @@ async function abrirResumen(job) {
     const noInv = r.no_inventario || [];
     $("resumen-aviso").hidden = !noInv.length;
     $("resumen-aviso").textContent = noInv.length
-      ? `${noInv.length} serial(es) no están en el inventario: ${noInv.join(", ")}`
+      ? `${noInv.length} serial(es) no están en el inventario de esta sede.`
       : "";
+    renderResumenSeriales(r);
+    if ((r.otra_sede || []).length) {
+      toast("Se detectaron seriales de otra sede en este documento.", "error");
+    }
     const body = $("resumen-documentos");
     for (const doc of d.documentos || []) {
       const tr = document.createElement("tr");
@@ -548,10 +647,153 @@ function mostrarEstado(mensaje, tipo = "") {
   nodo.className = "form-status" + (tipo ? ` ${tipo}` : "");
 }
 
-async function subirArchivos(archivos) {
-  const lista = Array.from(archivos || []).filter((f) => {
-    return f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+function reiniciarProgresoSubida() {
+  const caja = $("upload-progress");
+  caja.hidden = false;
+  caja.classList.remove("is-error");
+  $("upload-progress-bar").style.transform = "scaleX(0)";
+  $("upload-progress-track").setAttribute("aria-valuenow", "0");
+  $("upload-progress-percent").textContent = "0%";
+  $("upload-progress-detail").textContent = "";
+}
+
+function actualizarProgresoSubida(archivo, indice, total, cargado, bytes) {
+  const porcentaje = bytes > 0
+    ? Math.min(100, Math.round((cargado / bytes) * 100))
+    : 0;
+  $("upload-progress").hidden = false;
+  $("upload-progress").classList.remove("is-error");
+  $("upload-progress-file").textContent =
+    `${archivo.name} · ${indice} de ${total}`;
+  $("upload-progress-percent").textContent = `${porcentaje}%`;
+  $("upload-progress-bar").style.transform = `scaleX(${porcentaje / 100})`;
+  $("upload-progress-track").setAttribute("aria-valuenow", String(porcentaje));
+  $("upload-progress-detail").textContent = bytes
+    ? `${formatoBytes(cargado)} de ${formatoBytes(bytes)}`
+    : "Preparando archivo…";
+}
+
+function marcarErrorProgreso(mensaje) {
+  $("upload-progress").classList.add("is-error");
+  $("upload-progress-detail").textContent = mensaje;
+}
+
+function ocultarProgresoSubida(demora = 3000) {
+  window.setTimeout(() => {
+    $("upload-progress").hidden = true;
+  }, demora);
+}
+
+function validarArchivoLocal(archivo) {
+  const nombre = archivo.name.toLowerCase();
+  const maxMb = Number(estado.limits.max_upload_mb || 50);
+  if (!nombre.endsWith(".pdf") && archivo.type !== "application/pdf") {
+    return "No es un PDF. Elige un archivo con extensión .pdf.";
+  }
+  if (!archivo.size) {
+    return "El archivo está vacío.";
+  }
+  if (archivo.size > maxMb * 1024 * 1024) {
+    return `El archivo pesa ${formatoBytes(archivo.size)} y el máximo es ${maxMb} MB.`;
+  }
+  return "";
+}
+
+function mensajeErrorSubida(error) {
+  const porCodigo = {
+    pdf_demasiado_grande: "El PDF supera el tamaño máximo permitido.",
+    pdf_invalido: "El archivo está dañado, truncado o no es un PDF real.",
+    pdf_cifrado: "El PDF está protegido con contraseña. Quita la protección y vuelve a intentarlo.",
+    pdf_ilegible: "No se pudo leer el PDF; puede estar dañado o usar una estructura no soportada.",
+    pdf_contenido_activo: "El PDF contiene JavaScript, archivos adjuntos o acciones activas de alto riesgo. Por seguridad no se acepta.",
+    pdf_sin_paginas: "El PDF no contiene páginas.",
+    pdf_demasiadas_paginas: "El PDF supera el máximo de páginas permitido.",
+    subida_interrumpida: "La subida se interrumpió antes de completarse. Revisa tu conexión y vuelve a intentarlo.",
+    limite_subidas: "Demasiadas subidas en poco tiempo. Espera unos minutos.",
+    demasiados_activos: "Ya tienes el máximo de documentos activos. Espera a que terminen.",
+    limite_paginas: "Superarías el límite diario de páginas.",
+    conexion: "Se perdió la conexión durante la subida. El archivo no se agregó.",
+    tiempo_agotado: "La subida tardó demasiado y se canceló. Intenta con una conexión más estable.",
+    sesion: "Tu sesión expiró. Vuelve a iniciar sesión.",
+  };
+  if (error && error.codigo && porCodigo[error.codigo]) {
+    return porCodigo[error.codigo];
+  }
+  if (error && error.status === 413) return "El PDF supera el tamaño máximo permitido.";
+  if (error && error.status === 429) return error.message || "Demasiadas solicitudes. Espera un momento.";
+  if (error && error.status === 400) return error.message || "El archivo no pasó la validación.";
+  return (error && error.message) || "No se pudo subir el archivo.";
+}
+
+function subirArchivoXHR(archivo, indice, total, reprocesar = false) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/jobs");
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Accept", "application/json");
+    if (estado.csrf) xhr.setRequestHeader("X-CSRF-Token", estado.csrf);
+    xhr.timeout = 10 * 60 * 1000;
+    xhr.upload.onprogress = (evento) => {
+      if (evento.lengthComputable) {
+        actualizarProgresoSubida(
+          archivo, indice, total, evento.loaded, evento.total,
+        );
+      }
+    };
+    xhr.upload.onload = () => {
+      actualizarProgresoSubida(archivo, indice, total, archivo.size, archivo.size);
+      $("upload-progress-detail").textContent = "Validando PDF y agregando a la cola…";
+    };
+    xhr.onload = () => {
+      let datos = null;
+      try {
+        datos = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        datos = null;
+      }
+      if (xhr.status === 401) {
+        window.location.assign("/login");
+        reject(Object.assign(new Error("Sesión expirada."), {codigo: "sesion", status: 401}));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(datos || {});
+        return;
+      }
+      const error = new Error(
+        datos?.detail?.mensaje || textoError(datos, xhr.status),
+      );
+      error.codigo = datos?.detail?.codigo;
+      error.status = xhr.status;
+      reject(error);
+    };
+    xhr.onerror = () => {
+      reject(Object.assign(
+        new Error("Se perdió la conexión durante la subida."),
+        {codigo: "conexion", status: 0},
+      ));
+    };
+    xhr.ontimeout = () => {
+      reject(Object.assign(
+        new Error("La subida tardó demasiado."),
+        {codigo: "tiempo_agotado", status: 0},
+      ));
+    };
+    xhr.onabort = () => {
+      reject(Object.assign(
+        new Error("La subida se canceló."),
+        {codigo: "subida_interrumpida", status: 0},
+      ));
+    };
+    const datos = new FormData();
+    datos.append("archivo", archivo, archivo.name);
+    if (reprocesar) datos.append("reprocesar", "true");
+    xhr.send(datos);
   });
+}
+
+async function subirArchivos(archivos) {
+  const lista = Array.from(archivos || []);
   if (!lista.length) {
     mostrarEstado("Elige uno o más archivos PDF.", "error");
     return;
@@ -565,41 +807,88 @@ async function subirArchivos(archivos) {
   boton.disabled = true;
   zona.classList.add("subiendo");
   visual.hidden = false;
+  reiniciarProgresoSubida();
   let subidos = 0;
   let omitidos = 0;
+  const errores = [];
+  const advertencias = [];
 
   try {
-    for (const archivo of lista) {
-      mostrarEstado(`Subiendo ${archivo.name} (${subidos + 1}/${lista.length})…`);
-      const datos = new FormData();
-      datos.append("archivo", archivo, archivo.name);
-      try {
-        await api("/api/jobs", { method: "POST", body: datos });
-      } catch (error) {
-        if (error.codigo !== "pdf_repetido") throw error;
-        if (!window.confirm(`${archivo.name}: ${error.message}`)) {
-          omitidos++;
-          continue;
-        }
-        datos.append("reprocesar", "true");
-        await api("/api/jobs", { method: "POST", body: datos });
+    for (let indice = 0; indice < lista.length; indice++) {
+      const archivo = lista[indice];
+      const errorLocal = validarArchivoLocal(archivo);
+      if (errorLocal) {
+        errores.push(`${archivo.name}: ${errorLocal}`);
+        marcarErrorProgreso(`${archivo.name}: ${errorLocal}`);
+        continue;
       }
-      subidos++;
+      actualizarProgresoSubida(archivo, indice + 1, lista.length, 0, archivo.size);
+      mostrarEstado(`Subiendo ${archivo.name} (${indice + 1}/${lista.length})…`);
+      try {
+        let respuesta;
+        try {
+          respuesta = await subirArchivoXHR(archivo, indice + 1, lista.length);
+        } catch (error) {
+          if (error.codigo !== "pdf_repetido") throw error;
+          const confirmar = window.confirm(`${archivo.name}: ${error.message}`);
+          if (!confirmar) {
+            omitidos++;
+            continue;
+          }
+          respuesta = await subirArchivoXHR(
+            archivo, indice + 1, lista.length, true,
+          );
+        }
+        subidos++;
+        for (const aviso of respuesta.advertencias || []) {
+          advertencias.push(`${archivo.name}: ${aviso}`);
+        }
+        actualizarProgresoSubida(archivo, indice + 1, lista.length, archivo.size, archivo.size);
+        $("upload-progress-detail").textContent = "Agregado a la cola.";
+      } catch (error) {
+        const mensaje = mensajeErrorSubida(error);
+        errores.push(`${archivo.name}: ${mensaje}`);
+        marcarErrorProgreso(`${archivo.name}: ${mensaje}`);
+      }
     }
-    mostrarEstado(
-      omitidos ? `${subidos} documento(s) agregado(s); ${omitidos} repetido(s) omitido(s).` : subidos === 1
-        ? "Documento agregado a la cola."
-        : `${subidos} documentos agregados a la cola.`,
-      "ok",
-    );
+
+    if (advertencias.length) {
+      const activos = advertencias.filter((a) => !a.toLowerCase().includes("sin %%eof"));
+      toast(
+        activos.length
+          ? `Contenido activo detectado en el PDF (${activos.slice(0, 3).join(", ")}). Se procesa como documento y no se ejecuta.`
+          : "El PDF tiene una estructura incompleta (sin cierre %%EOF). Se procesará para revisión.",
+        "info",
+      );
+    }
+    if (errores.length) {
+      const detalle = errores.slice(0, 2).join(" ");
+      mostrarEstado(
+        `${subidos} documento(s) agregado(s). ${errores.length} con error: ${detalle}`,
+        "error",
+      );
+      ocultarProgresoSubida(8000);
+    } else if (omitidos) {
+      mostrarEstado(
+        `${subidos} documento(s) agregado(s); ${omitidos} repetido(s) omitido(s).`,
+        "ok",
+      );
+      ocultarProgresoSubida(3000);
+    } else {
+      mostrarEstado(
+        subidos === 1
+          ? "Documento agregado a la cola."
+          : `${subidos} documentos agregados a la cola.`,
+        "ok",
+      );
+      ocultarProgresoSubida(3000);
+    }
     await cargarJobs(true);
   } catch (error) {
-    mostrarEstado(
-      subidos
-        ? `${subidos} documento(s) subido(s). ${error.message}`
-        : error.message,
-      "error",
-    );
+    const mensaje = mensajeErrorSubida(error);
+    mostrarEstado(mensaje, "error");
+    marcarErrorProgreso(mensaje);
+    ocultarProgresoSubida(8000);
   } finally {
     estado.subiendo = false;
     boton.disabled = false;
@@ -658,6 +947,39 @@ function conectarSubida() {
   zona.addEventListener("drop", (e) => subirArchivos(e.dataTransfer.files));
 }
 
+function restaurarFiltrosCobertura() {
+  const params = new URLSearchParams(window.location.search);
+  const set = (id, clave) => {
+    const valor = params.get(clave);
+    if (valor !== null) $(id).value = valor;
+  };
+  set("cov-periodo", "periodo");
+  set("cov-buscar", "q");
+  set("cov-filtro-estado", "estado");
+  set("cov-filtro-estatus", "estatus");
+  set("cov-filtro-marca", "marca");
+  set("cov-filtro-piso", "piso");
+  estado.sedePreferida = params.get("sede") || "";
+}
+
+function guardarFiltrosCobertura() {
+  const params = new URLSearchParams(window.location.search);
+  const guardar = (clave, valor) => {
+    if (valor) params.set(clave, valor);
+    else params.delete(clave);
+  };
+  guardar("periodo", $("cov-periodo").value);
+  guardar("sede", $("cov-sede").value);
+  guardar("q", $("cov-buscar").value.trim());
+  guardar("estado", $("cov-filtro-estado").value);
+  guardar("estatus", $("cov-filtro-estatus").value);
+  guardar("marca", $("cov-filtro-marca").value);
+  guardar("piso", $("cov-filtro-piso").value);
+  const query = params.toString();
+  const url = window.location.pathname + (query ? `?${query}` : "") + window.location.hash;
+  window.history.replaceState(null, "", url);
+}
+
 function periodoLocal() {
   const hoy = new Date();
   return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
@@ -694,6 +1016,24 @@ function notificarCambiosJobs() {
     if (anterior !== job.status) {
       if (job.status === "done") {
         toast(`Documento listo: ${job.filename}`, "ok");
+        api(`/api/jobs/${encodeURIComponent(job.id)}/resultado`)
+          .then((datos) => {
+            const otras = datos?.resumen?.otra_sede || [];
+            const nuevos = datos?.resumen?.desconocidos || [];
+            if (otras.length) {
+              toast(
+                `Atención: ${job.filename} contiene seriales de otra sede.`,
+                "error",
+              );
+            }
+            if (nuevos.length) {
+              toast(
+                `${nuevos.length} serial(es) nuevo(s) en ${job.filename}. Abre Resumen para agregarlos.`,
+                "info",
+              );
+            }
+          })
+          .catch(() => {});
       } else if (job.status === "error") {
         toast(`Error en ${job.filename}: ${job.error || "revisa el documento"}`, "error");
       }
@@ -781,6 +1121,22 @@ async function guardarPerfil(evento) {
 }
 
 let solicitudCobertura = 0;
+function mostrarEsqueletoCobertura() {
+  const cuerpo = $("cov-faltantes-body");
+  cuerpo.textContent = "";
+  for (let i = 0; i < 4; i++) {
+    const tr = document.createElement("tr");
+    tr.className = "skeleton-row";
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    const linea = document.createElement("span");
+    linea.className = "skeleton-line";
+    td.appendChild(linea);
+    tr.appendChild(td);
+    cuerpo.appendChild(tr);
+  }
+}
+
 async function cargarCobertura(silencioso = false) {
   const solicitud = ++solicitudCobertura;
   if (!estado.sedes.length) {
@@ -801,9 +1157,16 @@ async function cargarCobertura(silencioso = false) {
     if (estado.role === "admin") select.appendChild(new Option("Todas las sedes", ""));
     select.value = estado.sedes.includes(seleccion) ? seleccion : estado.sedes[0];
   }
+  if (estado.sedePreferida
+      && [...select.options].some((o) => o.value === estado.sedePreferida)) {
+    select.value = estado.sedePreferida;
+    estado.sedePreferida = "";
+  }
   estado.coberturaPeriodo = periodo;
   estado.coberturaSede = select.value;
+  guardarFiltrosCobertura();
   $("cov-content").setAttribute("aria-busy", "true");
+  if (!estado.cobertura) mostrarEsqueletoCobertura();
   try {
     const q = new URLSearchParams({ periodo });
     if (select.value) q.set("sede", select.value);
@@ -832,6 +1195,22 @@ function renderCobertura() {
     : "Mes abierto: la cobertura incorpora las actualizaciones del inventario.";
   const equipos = sedes.flatMap((s) =>
     (s.equipos || s.faltantes || []).map((e) => ({ ...e, sede: s.sede })));
+  const orden = estado.coberturaOrden;
+  if (orden.campo) {
+    equipos.sort((a, b) => {
+      const va = String(a[orden.campo] ?? "");
+      const vb = String(b[orden.campo] ?? "");
+      return va.localeCompare(vb, "es", { numeric: true, sensitivity: "base" })
+        * orden.direccion;
+    });
+  }
+  document.querySelectorAll("#cov-equipos-table th[data-sort]").forEach((th) => {
+    const activo = th.dataset.sort === orden.campo;
+    th.setAttribute("aria-sort", activo
+      ? (orden.direccion === 1 ? "ascending" : "descending")
+      : "none");
+    th.classList.toggle("is-sorted", activo);
+  });
   const escaneados = sedes.flatMap((s) =>
     (s.detalle_escaneos || []).map((e) => ({ ...e, sede: s.sede })));
   const q = ($("cov-buscar")?.value || "").trim().toLowerCase();
@@ -982,6 +1361,7 @@ async function iniciar() {
     estado.sedes = me.sedes || [];
     estado.role = me.role || "user";
     estado.nombre = me.name || me.email;
+    estado.limits = me.limits || {};
     document.querySelectorAll("[data-user-email]").forEach((nodo) => {
       nodo.textContent = me.email;
     });
@@ -1003,15 +1383,38 @@ async function iniciar() {
   $("job-search").addEventListener("input", renderJobs);
   $("btn-perfil").addEventListener("click", abrirPerfil);
   $("perfil-cancel").addEventListener("click", () => $("perfil-dialog").close());
-  $("resumen-cerrar").addEventListener("click", () => $("resultado-dialog").close());
+  $("resumen-cerrar").addEventListener("click", () => {
+    estado.resumenJob = null;
+    $("resultado-dialog").close();
+  });
+  $("resultado-dialog").addEventListener("close", () => {
+    estado.resumenJob = null;
+  });
   $("perfil-form").addEventListener("submit", guardarPerfil);
   $("cov-refresh").addEventListener("click", () => cargarCobertura(true));
   $("cov-periodo").addEventListener("change", () => cargarCobertura(true));
   $("cov-sede").addEventListener("change", () => cargarCobertura(true));
-  $("cov-buscar").addEventListener("input", renderCobertura);
+  $("cov-buscar").addEventListener("input", () => {
+    renderCobertura();
+    guardarFiltrosCobertura();
+  });
   for (const id of ["cov-filtro-estado", "cov-filtro-estatus", "cov-filtro-marca", "cov-filtro-piso"]) {
-    $(id).addEventListener("change", renderCobertura);
+    $(id).addEventListener("change", () => {
+      renderCobertura();
+      guardarFiltrosCobertura();
+    });
   }
+  document.querySelectorAll("#cov-equipos-table th[data-sort]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const campo = th.dataset.sort;
+      estado.coberturaOrden = {
+        campo,
+        direccion: estado.coberturaOrden.campo === campo
+          && estado.coberturaOrden.direccion === 1 ? -1 : 1,
+      };
+      renderCobertura();
+    });
+  });
   $("cov-reset").addEventListener("click", reiniciarCobertura);
   $("cov-add").addEventListener("click", () => abrirEquipoForm(null));
   $("cov-add-inline").addEventListener("click", () => abrirEquipoForm(null));
@@ -1031,6 +1434,7 @@ async function iniciar() {
   });
   const periodo = $("cov-periodo");
   if (!periodo.value) periodo.value = periodoLocal();
+  restaurarFiltrosCobertura();
   await cargarJobs(false);
   await cargarCobertura(true);
 

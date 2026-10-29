@@ -62,8 +62,9 @@ compensaciones:
   cifrados, límite de tamaño y páginas.
 - Detección de contenido activo (`/JavaScript`, `/JS`, `/Launch`,
   `/EmbeddedFile`, `/RichMedia`, `/OpenAction`, `/AA`, `/XFA`) y de `%%EOF`.
-  Se **registra como aviso**, no se rechaza automáticamente, para evitar falsos
-  positivos en PDFs escaneados.
+  Los marcadores de alto riesgo (`JavaScript`, `JS`, `Launch`, `EmbeddedFile`,
+  `RichMedia`) **se rechazan** en la subida; el resto se registra como aviso
+  para revisión.
 - El PDF se guarda como dato con modo `0600`; directorios `0700`; sin bit de
   ejecución; el worker no tiene red.
 - Si aparece contenido activo o un PDF raro, se revisa manualmente.

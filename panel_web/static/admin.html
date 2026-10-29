@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025n">
-  <link rel="stylesheet" href="/static/admin.css?v=20261025n">
+  <link rel="stylesheet" href="/static/style.css?v=20261025p">
+  <link rel="stylesheet" href="/static/admin.css?v=20261025p">
 </head>
 <body class="admin-body">
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -260,7 +260,7 @@
 
       <div class="table-scroll inventory-scroll">
         <table class="admin-table inventory-table">
-          <thead><tr><th scope="col">Serial</th><th scope="col">Marca</th><th scope="col">Modelo</th><th scope="col">Sede</th><th scope="col">Zona</th><th scope="col">Ubicación</th><th scope="col">Piso</th><th scope="col">Estatus</th><th scope="col">Origen</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+          <thead><tr><th scope="col" class="sortable" data-sort="sn" aria-sort="none">Serial</th><th scope="col" class="sortable" data-sort="marca" aria-sort="none">Marca</th><th scope="col" class="sortable" data-sort="modelo" aria-sort="none">Modelo</th><th scope="col" class="sortable" data-sort="sede" aria-sort="none">Sede</th><th scope="col" class="sortable" data-sort="zona" aria-sort="none">Zona</th><th scope="col" class="sortable" data-sort="ubicacion" aria-sort="none">Ubicación</th><th scope="col" class="sortable" data-sort="piso" aria-sort="none">Piso</th><th scope="col" class="sortable" data-sort="estatus" aria-sort="none">Estatus</th><th scope="col">Origen</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
           <tbody id="inv-table-body"><tr><td colspan="10" class="admin-empty">Sin seriales todavía.</td></tr></tbody>
         </table>
       </div>
@@ -311,6 +311,6 @@
     </footer>
   </main>
 
-  <script src="/static/admin.js?v=20261025n" defer></script>
+  <script src="/static/admin.js?v=20261025p" defer></script>
 </body>
 </html>

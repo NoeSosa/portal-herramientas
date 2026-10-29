@@ -290,6 +290,8 @@ def _nombre_seguro(nombre: str | None) -> str:
     return (nombre[:120] or "documento.pdf")
 
 
+_AVISOS_BLOQUEANTES = {"JavaScript", "JS", "Launch", "EmbeddedFile", "RichMedia"}
+
 _MARCAS_PDF_ACTIVO = (
     (b"/JavaScript", "JavaScript"),
     (b"/JS", "JS"),
@@ -318,31 +320,55 @@ def _avisos_pdf(contenido: bytes) -> list[str]:
     return sorted(set(avisos))
 
 
+def _error_subida(
+    status: int, codigo: str, mensaje: str,
+) -> HTTPException:
+    return HTTPException(
+        status_code=status, detail={"codigo": codigo, "mensaje": mensaje},
+    )
+
+
 def _validar_pdf(contenido: bytes) -> tuple[int, list[str]]:
     if len(contenido) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail="El archivo supera el límite permitido.")
+        raise _error_subida(
+            413, "pdf_demasiado_grande",
+            f"El PDF supera el máximo de {settings.max_upload_mb} MB.",
+        )
     # Cabecera real de PDF (1.x/2.x), no solo la extensión ni un byte perdido.
     if not re.search(rb"%PDF-[12]\.\d", contenido[:1024]):
-        raise HTTPException(status_code=400, detail="El archivo no es un PDF válido.")
+        raise _error_subida(
+            400, "pdf_invalido",
+            "El archivo no tiene una cabecera PDF válida. Puede estar dañado, "
+            "truncado o no ser realmente un PDF.",
+        )
     doc = None
     try:
         doc = fitz.open(stream=contenido, filetype="pdf")
         if doc.is_encrypted:
-            raise HTTPException(status_code=400, detail="El PDF está protegido con contraseña.")
+            raise _error_subida(
+                400, "pdf_cifrado",
+                "El PDF está protegido con contraseña. Quita la protección antes de subirlo.",
+            )
         paginas = int(doc.page_count)
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(status_code=400, detail="No se pudo leer el PDF.") from None
+        raise _error_subida(
+            400, "pdf_ilegible",
+            "No se pudo leer el PDF. Puede estar dañado o usar una estructura no soportada.",
+        ) from None
     finally:
         if doc is not None:
             doc.close()
     if paginas < 1:
-        raise HTTPException(status_code=400, detail="El PDF no tiene páginas.")
+        raise _error_subida(
+            400, "pdf_sin_paginas",
+            "El PDF no tiene páginas. Revisa el archivo original.",
+        )
     if paginas > settings.max_pages:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El PDF supera el máximo de {settings.max_pages} páginas.",
+        raise _error_subida(
+            400, "pdf_demasiadas_paginas",
+            f"El PDF tiene {paginas} páginas y el máximo es {settings.max_pages}.",
         )
     return paginas, _avisos_pdf(contenido)
 
@@ -562,14 +588,24 @@ async def crear_job(
 ) -> dict[str, Any]:
     uid = int(usuario["id"])
     if not limite_subidas.permitir(uid):
-        raise HTTPException(
-            status_code=429,
-            detail="Demasiadas subidas en poco tiempo. Espera unos minutos.",
+        raise _error_subida(
+            429, "limite_subidas",
+            "Demasiadas subidas en poco tiempo. Espera unos minutos y vuelve a intentarlo.",
         )
 
-    contenido = await archivo.read(settings.max_upload_bytes + 1)
+    try:
+        contenido = await archivo.read(settings.max_upload_bytes + 1)
+    except Exception:
+        raise _error_subida(
+            400, "subida_interrumpida",
+            "La subida se interrumpió antes de recibir el archivo completo. "
+            "Revisa tu conexión y vuelve a intentarlo.",
+        ) from None
     if len(contenido) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail="El PDF supera el tamaño permitido.")
+        raise _error_subida(
+            413, "pdf_demasiado_grande",
+            f"El PDF supera el máximo de {settings.max_upload_mb} MB.",
+        )
     huella = hashlib.sha256(contenido).hexdigest()
     con = _conexion()
     try:
@@ -583,26 +619,29 @@ async def crear_job(
         con.close()
     # PyMuPDF es CPU-bound: no bloquear el event loop con un PDF grande.
     paginas, avisos_pdf = await run_in_threadpool(_validar_pdf, contenido)
+    riesgos = sorted(set(avisos_pdf) & _AVISOS_BLOQUEANTES)
+    if riesgos:
+        raise _error_subida(
+            400, "pdf_contenido_activo",
+            "El PDF contiene contenido activo de alto riesgo ("
+            + ", ".join(riesgos)
+            + "). Por seguridad no se acepta; exporta una copia plana del documento.",
+        )
     nombre = _nombre_seguro(archivo.filename)
 
     con = _conexion()
     try:
         if db.contar_activos(con, uid) >= settings.max_queued_jobs:
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    f"Ya tienes {settings.max_queued_jobs} documentos en cola. "
-                    "Espera a que terminen antes de subir más."
-                ),
+            raise _error_subida(
+                429, "demasiados_activos",
+                f"Ya tienes {settings.max_queued_jobs} documentos en cola. "
+                "Espera a que terminen antes de subir más.",
             )
         consumidas = db.contar_paginas_hoy(con, uid)
         if consumidas + paginas > settings.max_pages_per_day:
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    f"Superarías el límite diario de {settings.max_pages_per_day} "
-                    "páginas."
-                ),
+            raise _error_subida(
+                429, "limite_paginas",
+                f"Superarías el límite diario de {settings.max_pages_per_day} páginas.",
             )
     finally:
         con.close()
@@ -648,7 +687,10 @@ async def crear_job(
         )
         promedio = db.promedio_segundos_por_pagina(con)
         stats = db.estadisticas_cola(con, job, promedio)
-        return _job_publico(job, stats)
+        respuesta = _job_publico(job, stats)
+        if avisos_pdf:
+            respuesta["advertencias"] = avisos_pdf
+        return respuesta
     except Exception:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise
@@ -732,23 +774,46 @@ async def resultado_job(
         if job["status"] != "done" or not job["result_path"]:
             raise HTTPException(status_code=409, detail="El resultado todavía no está listo.")
         filas = con.execute(
-            "SELECT estado, sn FROM job_pages WHERE job_id=?", (job_id,)
+            "SELECT estado, sn, sede FROM job_pages WHERE job_id=?", (job_id,)
         ).fetchall()
         por_estado: dict[str, int] = {}
         seriales: set[str] = set()
+        sede_lectura: dict[str, str] = {}
         for fila in filas:
             estado = (fila["estado"] or "SIN_ESTADO").upper()
             por_estado[estado] = por_estado.get(estado, 0) + 1
             if fila["sn"] and estado != "DESCARTADA":
                 seriales.add(fila["sn"])
-        en_inventario = {
-            f["sn"] for f in con.execute(
-                "SELECT sn FROM equipos WHERE sn IN (%s)"
+                if fila["sede"]:
+                    sede_lectura.setdefault(fila["sn"], fila["sede"])
+        inventario = {
+            f["sn"]: f["sede"] or ""
+            for f in con.execute(
+                "SELECT sn, sede FROM equipos WHERE sn IN (%s)"
                 % ",".join("?" * len(seriales)),
                 tuple(seriales),
             ).fetchall()
-        } if seriales else set()
-        no_inventario = sorted(seriales - en_inventario)
+        } if seriales else {}
+        es_admin = usuario["role"] == "admin"
+        mis_sedes = (db.listar_sedes(con) if es_admin
+                     else db.sedes_usuario(con, int(usuario["id"])))
+        no_inventario: list[str] = []
+        desconocidos: list[dict[str, Any]] = []
+        otra_sede: list[dict[str, Any]] = []
+        sin_sede: list[str] = []
+        for sn in sorted(seriales):
+            if sn not in inventario:
+                no_inventario.append(sn)
+                sugerida = sede_lectura.get(sn, "")
+                if sugerida not in mis_sedes:
+                    sugerida = mis_sedes[0] if mis_sedes else ""
+                desconocidos.append({"sn": sn, "sede_sugerida": sugerida})
+            else:
+                sede = inventario[sn]
+                if not sede:
+                    sin_sede.append(sn)
+                elif not es_admin and sede not in mis_sedes:
+                    otra_sede.append({"sn": sn, "sede": sede})
     finally:
         con.close()
 
@@ -782,6 +847,15 @@ async def resultado_job(
             "por_estado": por_estado,
             "seriales": len(seriales),
             "no_inventario": no_inventario,
+            "desconocidos": desconocidos,
+            "otra_sede": otra_sede,
+            "sin_sede": sin_sede,
+            "puede_agregar": bool(mis_sedes),
+            "mis_sedes": mis_sedes,
+            "mensaje_otra_sede": (
+                "Algunos seriales pertenecen a otra sede. No puedes agregarlos "
+                "ni modificarlos; pide apoyo a administración."
+            ) if otra_sede else "",
         },
         "documentos": documentos,
     }

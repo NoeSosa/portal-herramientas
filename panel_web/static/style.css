@@ -1799,3 +1799,185 @@ h1 {
 .equipo-form-grid input, .equipo-form-grid select { font-size: 16px; min-height: 40px; }
 .location-hint, .location-chip, .status-pill { font-size: 12px; }
 .coverage-tools .btn-text, .coverage-table .btn-text { min-height: 40px; }
+
+/* Progreso de subida */
+.upload-progress {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--paper-2);
+}
+
+.upload-progress.is-error {
+  border-left-color: var(--red);
+  background: var(--red-soft);
+}
+
+.upload-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font: 500 10px/1.4 var(--mono);
+}
+
+.upload-progress-head span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-progress-track {
+  height: 5px;
+  margin-top: 7px;
+  overflow: hidden;
+  background: var(--paper-3);
+}
+
+.upload-progress-bar {
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform .18s ease-out;
+}
+
+.upload-progress.is-error .upload-progress-bar {
+  background: var(--red);
+}
+
+.upload-progress-detail {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font: 400 10px/1.4 var(--sans);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upload-progress-bar { transition: none; }
+}
+
+.result-dialog {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.resumen-seriales {
+  margin: 12px 0;
+  padding: 11px 12px;
+  border-left: 2px solid var(--amber);
+  background: var(--amber-soft);
+}
+
+.resumen-serial-group h3 {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font: 500 11px/1.3 var(--mono);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.resumen-serial-group p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font: 400 10px/1.45 var(--sans);
+}
+
+.resumen-serial-group + .resumen-serial-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.resumen-serial-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(16, 32, 47, .1);
+}
+
+.resumen-serial-row code {
+  color: var(--navy);
+  font: 500 10px/1.3 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.resumen-serial-row span {
+  color: var(--muted);
+  font: 400 9px/1.3 var(--sans);
+}
+
+.resumen-serial-alert {
+  border-left-color: var(--red);
+  background: var(--red-soft);
+}
+
+.coverage-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.coverage-table th.sortable:hover {
+  color: var(--navy);
+}
+
+.coverage-table th.is-sorted {
+  color: var(--navy);
+}
+
+.coverage-table th.is-sorted[aria-sort="ascending"]::after {
+  content: " ↑";
+}
+
+.coverage-table th.is-sorted[aria-sort="descending"]::after {
+  content: " ↓";
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coverage-table th.sortable { transition: none; }
+}
+
+/* Carga inicial de tablas */
+.skeleton-row td {
+  padding: 10px 12px !important;
+}
+
+.skeleton-line {
+  display: block;
+  width: 100%;
+  height: 10px;
+  background: linear-gradient(90deg, var(--paper-2), var(--paper-3), var(--paper-2));
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s linear infinite;
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line { animation: none; }
+}
+
+.inventory-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.inventory-table th.sortable:hover,
+.inventory-table th.is-sorted {
+  color: var(--navy);
+}
+
+.inventory-table th.is-sorted[aria-sort="ascending"]::after {
+  content: " ↑";
+}
+
+.inventory-table th.is-sorted[aria-sort="descending"]::after {
+  content: " ↓";
+}

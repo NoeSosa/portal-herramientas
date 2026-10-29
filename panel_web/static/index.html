@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20261025n">
+  <link rel="stylesheet" href="/static/style.css?v=20261025p">
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -121,6 +121,17 @@
         </div>
       </div>
 
+      <div class="upload-progress" id="upload-progress" hidden>
+        <div class="upload-progress-head">
+          <span id="upload-progress-file">Preparando archivo…</span>
+          <span id="upload-progress-percent">0%</span>
+        </div>
+        <div class="upload-progress-track" id="upload-progress-track"
+             role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="upload-progress-bar" id="upload-progress-bar"></div>
+        </div>
+        <p class="upload-progress-detail" id="upload-progress-detail"></p>
+      </div>
       <p class="form-status" id="upload-status" role="status" aria-live="polite"></p>
     </section>
 
@@ -241,8 +252,8 @@
             </div>
           </div>
           <div class="table-scroll coverage-scroll">
-            <table class="admin-table coverage-table">
-              <thead><tr><th scope="col">Sede</th><th scope="col">Serial</th><th scope="col">Marca</th><th scope="col">Modelo</th><th scope="col">Ubicación</th><th scope="col">Piso</th><th scope="col">Estatus</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+            <table class="admin-table coverage-table" id="cov-equipos-table">
+              <thead><tr><th scope="col" class="sortable" data-sort="sede" aria-sort="none">Sede</th><th scope="col" class="sortable" data-sort="sn" aria-sort="none">Serial</th><th scope="col" class="sortable" data-sort="marca" aria-sort="none">Marca</th><th scope="col" class="sortable" data-sort="modelo" aria-sort="none">Modelo</th><th scope="col" class="sortable" data-sort="ubicacion" aria-sort="none">Ubicación</th><th scope="col" class="sortable" data-sort="piso" aria-sort="none">Piso</th><th scope="col" class="sortable" data-sort="estatus" aria-sort="none">Estatus</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
               <tbody id="cov-faltantes-body"></tbody>
             </table>
           </div>
@@ -317,6 +328,7 @@
     <h2 id="resumen-nombre">—</h2>
     <p class="result-summary" id="resumen-texto">Cargando…</p>
     <p class="result-warning" id="resumen-aviso" hidden></p>
+    <div class="resumen-seriales" id="resumen-seriales" hidden></div>
     <div class="table-scroll">
       <table class="coverage-table result-table">
         <thead><tr><th>Serial</th><th>Estado</th><th>Tamaño</th><th></th></tr></thead>
@@ -363,6 +375,6 @@
     </article>
   </template>
 
-  <script src="/static/app.js?v=20261025n" defer></script>
+  <script src="/static/app.js?v=20261025p" defer></script>
 </body>
 </html>

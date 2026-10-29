@@ -8,7 +8,11 @@ const A = {
   invLimit: 50,
   invTotal: 0,
   invAll: 0,
+  invOrden: "sn",
+  invDir: 1,
   editing: null,
+  invOpen: false,
+  invDirty: false,
   tick: 0,
   ocrPag: 0,
   ocrJob: "",
@@ -179,11 +183,17 @@ function conectarEventos() {
 
   $("inv-form").addEventListener("submit", guardarEquipo);
   $("inv-cancel").addEventListener("click", () => {
-    limpiarFormulario();
-    cerrarModalInventario();
+    if (cerrarModalInventario()) limpiarFormulario();
   });
   $("inv-modal-close").addEventListener("click", () => {
-    cerrarModalInventario();
+    if (cerrarModalInventario()) limpiarFormulario();
+  });
+  $("inv-dialog").addEventListener("cancel", (evento) => {
+    if (!cerrarModalInventario()) {
+      evento.preventDefault();
+      return;
+    }
+    limpiarFormulario();
   });
   $("inv-choose").addEventListener("click", () => $("inv-file").click());
   $("inv-file").addEventListener("change", (e) => {
@@ -196,7 +206,24 @@ function conectarEventos() {
     abrirModalInventario();
   });
   $("inv-export").addEventListener("click", exportarInventario);
+  for (const evento of ["input", "change"]) {
+    $("inv-form").addEventListener(evento, () => {
+      if (A.invOpen) A.invDirty = true;
+    });
+  }
   $("inv-clear").addEventListener("click", limpiarFiltrosAdmin);
+  document.querySelectorAll(".inventory-table th[data-sort]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const campo = th.dataset.sort;
+      if (A.invOrden === campo) A.invDir *= -1;
+      else {
+        A.invOrden = campo;
+        A.invDir = 1;
+      }
+      A.invOffset = 0;
+      cargarEquipos();
+    });
+  });
   let timerUbicacion = null;
   $("inv-ubicacion").addEventListener("input", (e) => {
     clearTimeout(timerUbicacion);
@@ -764,6 +791,7 @@ async function cargarInventario() {
     rellenarFiltros("inv-marca-filter", d.marcas || [], "todas las marcas");
     rellenarFiltros("inv-estatus-filter", d.estatus || [], "todos los estatus");
     rellenarFiltros("inv-piso-filter", d.pisos || [], "todos los pisos");
+    restaurarFiltrosAdmin();
     A.invOffset = 0;
     await cargarEquipos();
   } catch (error) {
@@ -780,17 +808,36 @@ function rellenarFiltros(id, valores, vacio) {
   if ([...select.options].some((o) => o.value === previo)) select.value = previo;
 }
 
+function mostrarEsqueletoInventario() {
+  const body = $("inv-table-body");
+  body.textContent = "";
+  for (let i = 0; i < 5; i++) {
+    const tr = el("tr", "skeleton-row");
+    const td = el("td");
+    td.colSpan = 10;
+    const linea = el("span", "skeleton-line");
+    td.appendChild(linea);
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+}
+
 async function cargarEquipos() {
+  guardarFiltrosAdmin();
   const params = new URLSearchParams({
     q: $("inv-q").value || "",
     sede: $("inv-sede-filter").value || "",
     marca: $("inv-marca-filter").value || "",
     estatus: $("inv-estatus-filter").value || "",
     piso: $("inv-piso-filter").value || "",
+    orden: (A.invDir === 1 ? "" : "-") + A.invOrden,
     limite: A.invLimit,
     offset: A.invOffset,
   });
   $("inv-table-body").setAttribute("aria-busy", "true");
+  if (!$("inv-table-body").querySelector(".skeleton-row")) {
+    mostrarEsqueletoInventario();
+  }
   try {
     const d = await api(`/api/admin/equipos?${params}`);
     A.invTotal = d.total;
@@ -800,6 +847,13 @@ async function cargarEquipos() {
     $("inv-prev").disabled = A.invOffset <= 0;
     $("inv-next").disabled = A.invOffset + A.invLimit >= d.total;
     pintarEquipos(d.equipos || []);
+    document.querySelectorAll(".inventory-table th[data-sort]").forEach((th) => {
+      const activo = th.dataset.sort === A.invOrden;
+      th.setAttribute("aria-sort", activo
+        ? (A.invDir === 1 ? "ascending" : "descending")
+        : "none");
+      th.classList.toggle("is-sorted", activo);
+    });
     actualizarChipsAdmin();
   } catch (error) {
     set("inv-status", error.message);
@@ -865,6 +919,43 @@ function claseEstatusAdmin(estatus) {
   if (!e || e.includes("operacion")) return "";
   if (e.includes("baja") || e.includes("danad") || e.includes("dana")) return "estado-baja";
   return "estado-alerta";
+}
+
+function restaurarFiltrosAdmin() {
+  let datos;
+  try {
+    datos = JSON.parse(localStorage.getItem("panel_admin_filtros_v1") || "null");
+  } catch {
+    datos = null;
+  }
+  if (!datos) return;
+  const pares = [
+    ["inv-sede-filter", "sede"],
+    ["inv-marca-filter", "marca"],
+    ["inv-estatus-filter", "estatus"],
+    ["inv-piso-filter", "piso"],
+  ];
+  $("inv-q").value = datos.q || "";
+  for (const [id, clave] of pares) {
+    const select = $(id);
+    if ([...select.options].some((o) => o.value === (datos[clave] || ""))) {
+      select.value = datos[clave] || "";
+    }
+  }
+}
+
+function guardarFiltrosAdmin() {
+  try {
+    localStorage.setItem("panel_admin_filtros_v1", JSON.stringify({
+      q: $("inv-q").value.trim(),
+      sede: $("inv-sede-filter").value,
+      marca: $("inv-marca-filter").value,
+      estatus: $("inv-estatus-filter").value,
+      piso: $("inv-piso-filter").value,
+    }));
+  } catch {
+    // localStorage puede estar deshabilitado; los filtros siguen funcionando.
+  }
 }
 
 function celdaEstatusAdmin(estatus) {
@@ -940,6 +1031,7 @@ function actualizarChipsAdmin() {
 }
 
 function limpiarFiltrosAdmin() {
+  try { localStorage.removeItem("panel_admin_filtros_v1"); } catch {}
   $("inv-q").value = "";
   for (const id of ["inv-sede-filter", "inv-marca-filter", "inv-estatus-filter", "inv-piso-filter"]) {
     $(id).value = "";
@@ -964,13 +1056,24 @@ function editarEquipo(e) {
 
 function abrirModalInventario() {
   const dialogo = $("inv-dialog");
+  A.invOpen = true;
+  A.invDirty = false;
   if (!dialogo.open) dialogo.showModal();
   window.setTimeout(() => $("inv-sn").focus(), 60);
 }
 
-function cerrarModalInventario() {
+function cerrarModalInventario(forzar = false) {
   const dialogo = $("inv-dialog");
+  if (!forzar && A.invDirty) {
+    const salir = window.confirm(
+      "Hay cambios sin guardar en este equipo. ¿Cerrar de todos modos?",
+    );
+    if (!salir) return false;
+  }
+  A.invDirty = false;
+  A.invOpen = false;
   if (dialogo.open) dialogo.close();
+  return true;
 }
 
 function limpiarFormulario() {
@@ -978,6 +1081,7 @@ function limpiarFormulario() {
   $("inv-form").reset();
   $("inv-save").textContent = "Guardar serial";
   $("inv-cancel").hidden = false;
+  A.invDirty = false;
   set("inv-form-status", "");
 }
 
@@ -1016,7 +1120,7 @@ async function guardarEquipo(evento) {
       : d.detalle || "No se pudo exportar el Excel.");
     if (!d.ok) return;
     limpiarFormulario();
-    cerrarModalInventario();
+    cerrarModalInventario(true);
     await cargarInventario();
     await cargarOverview();
     await cargarSedes();

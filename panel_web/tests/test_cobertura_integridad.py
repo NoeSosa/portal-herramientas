@@ -16,6 +16,7 @@ class IntegridadTest(unittest.TestCase):
         self.con = db.conectar(self.path)
         self.addCleanup(self.con.close)
         self.user = db.upsert_usuario(self.con, 'u', 'u@example.invalid', 'U', 'user')
+        db.asignar_sedes(self.con, int(self.user['id']), ['A'])
 
     def job(self, jid, sn='ABC-123'):
         db.crear_job(self.con, job_id=jid, owner_id=self.user['id'],
@@ -27,6 +28,14 @@ class IntegridadTest(unittest.TestCase):
 
     def coverage(self):
         return db.cobertura_sede(self.con, 'A', db.periodo_de())
+
+    def test_no_acredita_cobertura_de_otra_sede(self):
+        db.upsert_equipo(self.con, 'AJENO-1', sede='B')
+        self.job('j-ajeno', sn='AJENO-1')
+        self.assertEqual(db.cobertura_sede(self.con, 'B', db.periodo_de())['escaneados'], 0)
+        self.assertEqual(db.cobertura_para_usuario(
+            self.con, int(self.user['id']), db.periodo_de(),
+        )['escaneados'], 0)
 
     def test_migracion_repara_claves_sin_perder_serial_original(self):
         db.upsert_equipo(self.con, 'ABC-123', sede='A')

@@ -1090,3 +1090,39 @@
     flex: 1 1 100%;
   }
 }
+
+/* Cierre de sistema: el inventario administrativo debe leerse como la cobertura. */
+.admin-table {
+  font-size: 12px;
+}
+
+.admin-table th {
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
+.admin-table td {
+  font-size: 12px;
+  line-height: 1.45;
+  height: 44px;
+}
+
+.inventory-form input,
+.inventory-form select {
+  font-size: 13px;
+}
+
+.inventory-filters.filter-bar input,
+.inventory-filters.filter-bar select {
+  font-size: 11px;
+  min-height: 36px;
+  height: 36px;
+}
+
+.inventory-table td:nth-child(1) {
+  font-size: 12px;
+}
+
+.row-action {
+  font-size: 10px;
+}

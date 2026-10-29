@@ -624,6 +624,21 @@ def reconciliar_cobertura(con: sqlite3.Connection, periodo: str) -> None:
         indice.setdefault(normalizar_serial(f["sn"]), []).append(f)
     resets = {f["sede"]: f["reset_en"] for f in con.execute(
         "SELECT sede, reset_en FROM cobertura_resets WHERE periodo=?", (periodo,))}
+    roles = {
+        int(f["id"]): f["role"]
+        for f in con.execute("SELECT id, role FROM users")
+    }
+    sedes_por_usuario: dict[int, set[str]] = {}
+    for f in con.execute("SELECT user_id, sede FROM user_sedes"):
+        sedes_por_usuario.setdefault(int(f["user_id"]), set()).add(f["sede"])
+
+    def puede_cubrir(owner_id, sede: str) -> bool:
+        if owner_id is None:
+            return False
+        if roles.get(int(owner_id)) == "admin":
+            return True
+        return bool(sede) and sede in sedes_por_usuario.get(int(owner_id), set())
+
     existentes = {}
     for f in con.execute("SELECT * FROM cobertura_escaneos WHERE periodo=?", (periodo,)):
         existentes.setdefault((f["job_id"], normalizar_serial(f["sn"])), f)
@@ -633,6 +648,10 @@ def reconciliar_cobertura(con: sqlite3.Connection, periodo: str) -> None:
         if len(candidatos) != 1:
             continue
         equipo = candidatos[0]
+        # Un escaneo nunca debe acreditar cobertura de una sede que el usuario
+        # no tiene asignada. El resumen del job le avisa de esa lectura.
+        if not puede_cubrir(f["owner_id"], equipo["sede"]):
+            continue
         if f["escaneado_en"] <= resets.get(equipo["sede"], ""):
             continue
         clave = (f["job_id"], normalizar_serial(f["sn"]))
@@ -1042,12 +1061,16 @@ def listar_equipos(
     orden: str = "sn", **filtros,
 ) -> list[dict[str, Any]]:
     where, params = _filtros_equipos(**filtros)
-    orden = orden if orden in ("sn", "marca", "modelo", "sede", "zona", "estatus") else "sn"
+    descendente = str(orden).startswith("-")
+    campo = str(orden).lstrip("-")
+    campo = campo if campo in ("sn", "marca", "modelo", "sede", "zona",
+                               "ubicacion", "piso", "estatus") else "sn"
+    direccion = "DESC" if descendente else "ASC"
     filas = con.execute(
         f"SELECT sn, marca, modelo, tipo, sede, zona, domicilio, ubicacion,"
         f" piso, estatus, contador_inicial, origen_hoja, actualizado_en"
         f" FROM equipos{where}"
-        f" ORDER BY {orden} LIMIT ? OFFSET ?",
+        f" ORDER BY {campo} {direccion} LIMIT ? OFFSET ?",
         params + [max(1, min(500, int(limite))), max(0, int(offset))],
     ).fetchall()
     return [dict(f) for f in filas]
