@@ -1066,8 +1066,9 @@ def sustituir_equipo(
     son `None`. `fecha_alta` de la nueva y `fecha_baja` de la vieja (default
     hoy en `_TZ_CUOTA`) se fijan con `UPDATE` directo porque `CAMPOS_EQUIPO`
     no incluye esos campos. Si la nueva ya existe y la vieja ya la referencia
-    en `sustituto_sn` sin estar `Retirada`, solo se completa el retiro de la
-    vieja (recuperación tras un corte a mitad). La cobertura del mes abierto
+    en `sustituto_sn`, solo se completa el retiro de la vieja (recuperación
+    tras un corte a mitad, incluso si la vieja ya quedó `Retirada` sin
+    `fecha_baja`). La cobertura del mes abierto
     se reconcilia una sola vez al final. La auditoría la escribe el handler.
     """
     hoy = datetime.now(_TZ_CUOTA).strftime("%Y-%m-%d")
@@ -1078,16 +1079,17 @@ def sustituir_equipo(
     if vieja_row is None:
         raise EquipoNoEncontrado("No se encontró la serie vieja en el inventario.")
     vieja_sn = vieja_row["sn"]
-    if (vieja_row["estatus"] or "") == "Retirada":
-        raise SustitucionError("La serie vieja ya está Retirada; no se puede sustituir de nuevo.")
+    es_retirada = (vieja_row["estatus"] or "") == "Retirada"
     nueva_row = buscar_equipo(con, nueva)
     reanudada = False
     if nueva_row is not None:
         referencia = (vieja_row["sustituto_sn"] or "").strip().upper()
         if referencia and referencia == nueva_row["sn"].strip().upper():
             reanudada = True
-        else:
-            raise SustitucionError("La serie nueva ya existe en el inventario.")
+    if es_retirada and not reanudada:
+        raise SustitucionError("La serie vieja ya está Retirada; no se puede sustituir de nuevo.")
+    if nueva_row is not None and not reanudada:
+        raise SustitucionError("La serie nueva ya existe en el inventario.")
     if not reanudada:
         def heredado(valor, campo):
             return vieja_row[campo] if valor is None else valor

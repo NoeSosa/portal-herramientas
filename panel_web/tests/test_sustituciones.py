@@ -197,6 +197,24 @@ class SustitucionDBTest(unittest.TestCase):
         self.assertEqual(vieja["fecha_baja"], hoy_local())
         self.assertEqual(db.contar_equipos(self.con), 2)
 
+    def test_reanudacion_con_vieja_ya_retirada_completa_fecha(self) -> None:
+        db.upsert_equipo(self.con, "NUEVA010", sede="Reynosa",
+                         estatus="En Operación")
+        self.con.execute(
+            "UPDATE equipos SET estatus='Retirada', sustituto_sn='NUEVA010',"
+            " fecha_baja=NULL WHERE sn='VIEJA001'"
+        )
+        self.con.commit()
+        resultado = db.sustituir_equipo(
+            self.con, vieja="VIEJA001", nueva="NUEVA010",
+        )
+        self.assertTrue(resultado["reanudada"])
+        vieja = self.fila("VIEJA001")
+        self.assertEqual(vieja["estatus"], "Retirada")
+        self.assertEqual(vieja["sustituto_sn"], "NUEVA010")
+        self.assertEqual(vieja["fecha_baja"], hoy_local())
+        self.assertEqual(db.contar_equipos(self.con), 2)
+
 
 @unittest.skipUnless(HAY_FASTAPI, "sin FastAPI en este entorno")
 class SustitucionHTTPTest(unittest.TestCase):
