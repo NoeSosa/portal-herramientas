@@ -1,0 +1,5 @@
+# MCP pdf-separator — dependencias fijadas (Python 3.12, venv en
+# ~/workspace/pdf-separator/.venv). mcp<2: la v2 renombró FastMCP a
+# MCPServer y cambió APIs; el servidor corre en stdio local con la v1.
+mcp==1.30.0
+pydantic==2.14.3

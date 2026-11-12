@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+*.db
+*.db-shm
+*.db-wal
+*.xlsx
+exports/
+app_ref/
+plan.json
+seed_v2_constitucion.csv
+pares_sustitucion.csv
