@@ -1052,8 +1052,9 @@ function limpiarFiltrosAdmin() {
 
 function editarEquipo(e) {
   A.editing = e.sn;
-  for (const campo of ["sn", "marca", "modelo", "sede", "zona", "domicilio", "ubicacion", "piso", "estatus", "contador_inicial"]) {
-    const input = $(`inv-${campo === "contador_inicial" ? "contador" : campo}`);
+  const idsInv = {contador_inicial: "inv-contador", sustituto_sn: "inv-sustituto", fecha_baja: "inv-fecha-baja"};
+  for (const campo of ["sn", "marca", "modelo", "sede", "zona", "domicilio", "ubicacion", "piso", "estatus", "contador_inicial", "sustituto_sn", "fecha_baja"]) {
+    const input = $(idsInv[campo] || `inv-${campo}`);
     if (input) input.value = e[campo] || "";
   }
   $("inv-sn").value = e.sn;
@@ -1108,6 +1109,8 @@ async function guardarEquipo(evento) {
     piso: $("inv-piso").value.trim(),
     estatus: $("inv-estatus").value.trim(),
     contador_inicial: $("inv-contador").value.trim(),
+    sustituto_sn: $("inv-sustituto").value.trim(),
+    fecha_baja: $("inv-fecha-baja").value.trim(),
   };
   if (!datos.sn) {
     set("inv-form-status", "Falta el serial.");

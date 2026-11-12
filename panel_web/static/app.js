@@ -388,6 +388,8 @@ function abrirEquipoForm(equipo) {
     "eq-domicilio": equipo?.domicilio || "",
     "eq-zona": equipo?.zona || "",
     "eq-contador": equipo?.contador_inicial || "",
+    "eq-sustituto": equipo?.sustituto_sn || "",
+    "eq-fecha-baja": equipo?.fecha_baja || "",
   };
   for (const [id, valor] of Object.entries(valores)) $(id).value = valor;
   cargarEstatusSugeridos();
@@ -409,6 +411,8 @@ async function guardarEquipoUsuario(evento) {
     domicilio: $("eq-domicilio").value.trim(),
     zona: $("eq-zona").value.trim(),
     contador_inicial: $("eq-contador").value.trim(),
+    sustituto_sn: $("eq-sustituto").value.trim(),
+    fecha_baja: $("eq-fecha-baja").value.trim(),
   };
   if (!datos.sn) {
     setEqStatus("Falta el serial.");
@@ -1372,6 +1376,12 @@ function renderCobertura() {
           if (indice === 6) {
             td.className = "status-cell";
             td.appendChild(crearStatusPill(v));
+            if (e.sustituto_sn) {
+              const ref = document.createElement("span");
+              ref.className = "sustituto-ref";
+              ref.textContent = ` → ${e.sustituto_sn}`;
+              td.appendChild(ref);
+            }
           } else {
             td.textContent = v || "—";
           }

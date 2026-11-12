@@ -1981,3 +1981,10 @@ h1 {
 .inventory-table th.is-sorted[aria-sort="descending"]::after {
   content: " ↓";
 }
+
+.sustituto-ref {
+  font: 500 8px/1.4 var(--mono);
+  letter-spacing: .05em;
+  color: var(--muted-2);
+  white-space: nowrap;
+}

@@ -600,7 +600,8 @@ def asegurar_inventario_periodo(con: sqlite3.Connection, periodo: str, *, refres
         con.execute("INSERT INTO cobertura_periodos VALUES(?,?,?)",
                     (periodo, ahora(), "registrado" if periodo == periodo_de() else "reconstruido"))
     con.execute("DELETE FROM cobertura_inventario WHERE periodo=?", (periodo,))
-    for fila in con.execute("SELECT sn,sede,marca,modelo,zona,domicilio,ubicacion,piso,estatus,contador_inicial"
+    for fila in con.execute("SELECT sn,sede,marca,modelo,zona,domicilio,ubicacion,piso,estatus,contador_inicial,"
+                            " sustituto_sn,fecha_baja"
                             " FROM equipos WHERE COALESCE(sede,'')<>''").fetchall():
         con.execute("INSERT INTO cobertura_inventario VALUES(?,?,?,?)",
                     (periodo, fila["sn"], fila["sede"], json.dumps(dict(fila), ensure_ascii=False)))
@@ -737,10 +738,26 @@ def cobertura_sede(con: sqlite3.Connection, sede: str, periodo: str) -> dict[str
         (periodo, sede),
     ).fetchall()
     escaneados = {f["sn"] for f in escaneos} & {f["sn"] for f in esperados}
+    # Enlace de sustitución en vivo: las copias históricas de meses cerrados
+    # no lo traen en `datos`, así que se completa desde `equipos` (aditivo).
+    enlace = {}
+    if esperados:
+        sns = [f["sn"] for f in esperados]
+        marcas = ",".join("?" * len(sns))
+        enlace = {
+            f["sn"]: f for f in con.execute(
+                f"SELECT sn, sustituto_sn, fecha_baja FROM equipos WHERE sn IN ({marcas})",
+                sns,
+            )
+        }
     equipos = []
     for f in esperados:
         fila = dict(f)
         fila["escaneado"] = fila["sn"] in escaneados
+        vivo = enlace.get(fila["sn"])
+        if vivo is not None:
+            fila["sustituto_sn"] = vivo["sustituto_sn"]
+            fila["fecha_baja"] = vivo["fecha_baja"]
         equipos.append(fila)
     faltantes = [f for f in equipos if not f["escaneado"]]
     duplicados = [dict(f) for f in escaneos if f["duplicado"]]
@@ -899,7 +916,7 @@ def trabajadores_job(con: sqlite3.Connection, job_id: str) -> list[dict[str, Any
 CAMPOS_EQUIPO = ("marca", "modelo", "tipo", "sede", "zona", "domicilio",
                  "ubicacion", "piso", "ip_fisica", "ip_hp", "ip_ekm",
                  "perfil", "estatus", "contador_inicial", "sustituto_sn",
-                 "origen_hoja")
+                 "origen_hoja", "fecha_baja")
 
 
 def _ubicaciones_existentes(
@@ -1064,8 +1081,8 @@ def sustituir_equipo(
     domicilio, ubicación y origen de la vieja; marca, modelo, tipo, perfil,
     IPs, piso y contador llegan del llamador o heredan de la vieja cuando
     son `None`. `fecha_alta` de la nueva y `fecha_baja` de la vieja (default
-    hoy en `_TZ_CUOTA`) se fijan con `UPDATE` directo porque `CAMPOS_EQUIPO`
-    no incluye esos campos. Si la nueva ya existe y la vieja ya la referencia
+    hoy en `_TZ_CUOTA`) se fijan con `UPDATE` directo para fijar la fecha
+    exacta de la operación. Si la nueva ya existe y la vieja ya la referencia
     en `sustituto_sn`, solo se completa el retiro de la vieja (recuperación
     tras un corte a mitad, incluso si la vieja ya quedó `Retirada` sin
     `fecha_baja`). La cobertura del mes abierto
@@ -1121,7 +1138,8 @@ def sustituir_equipo(
         con, vieja_sn, reconciliar=False,
         estatus="Retirada", sustituto_sn=nueva_sn,
     )
-    # fecha_baja no está en CAMPOS_EQUIPO: UPDATE directo documentado.
+    # fecha_baja se fija con UPDATE directo en la sustitución (la edición
+    # normal la persiste vía upsert_equipo desde CAMPOS_EQUIPO).
     con.execute("UPDATE equipos SET fecha_baja=? WHERE sn=?", (baja, vieja_sn))
     con.commit()
     actualizar_cobertura_inventario(con)

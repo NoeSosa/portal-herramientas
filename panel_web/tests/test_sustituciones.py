@@ -215,6 +215,32 @@ class SustitucionDBTest(unittest.TestCase):
         self.assertEqual(vieja["fecha_baja"], hoy_local())
         self.assertEqual(db.contar_equipos(self.con), 2)
 
+    def test_upsert_persiste_sustituto_y_fecha_baja(self) -> None:
+        db.upsert_equipo(
+            self.con, "VIEJA001", sustituto_sn="NUEVA001",
+            fecha_baja="2026-11-01",
+        )
+        fila = self.fila("VIEJA001")
+        self.assertEqual(fila["sustituto_sn"], "NUEVA001")
+        self.assertEqual(fila["fecha_baja"], "2026-11-01")
+        db.upsert_equipo(
+            self.con, "VIEJA001", sustituto_sn="NUEVA002",
+            fecha_baja="2026-11-02",
+        )
+        fila = self.fila("VIEJA001")
+        self.assertEqual(fila["sustituto_sn"], "NUEVA002")
+        self.assertEqual(fila["fecha_baja"], "2026-11-02")
+
+    def test_cobertura_sede_incluye_sustituto_y_fecha(self) -> None:
+        db.upsert_equipo(
+            self.con, "VIEJA001", estatus="Retirada",
+            sustituto_sn="NUEVA001", fecha_baja="2026-11-01",
+        )
+        datos = db.cobertura_sede(self.con, "Reynosa", db.periodo_de())
+        fila = next(f for f in datos["equipos"] if f["sn"] == "VIEJA001")
+        self.assertEqual(fila["sustituto_sn"], "NUEVA001")
+        self.assertEqual(fila["fecha_baja"], "2026-11-01")
+
 
 @unittest.skipUnless(HAY_FASTAPI, "sin FastAPI en este entorno")
 class SustitucionHTTPTest(unittest.TestCase):
@@ -323,6 +349,18 @@ class SustitucionHTTPTest(unittest.TestCase):
     def test_anonimo_401(self) -> None:
         r = self.sustituir("REY-VIEJA1", "REY-NUEVA9")
         self.assertEqual(r.status_code, 401, r.text)
+
+    def test_admin_edita_sustituto_y_fecha_baja(self) -> None:
+        self.sesion(self.admin)
+        r = self.client.post(
+            "/api/admin/equipos", headers=self.headers(),
+            json={"sn": "REY-VIEJA1", "sustituto_sn": "REY-NUEVA1",
+                  "fecha_baja": "2026-11-03"},
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        fila = self.fila("REY-VIEJA1")
+        self.assertEqual(fila["sustituto_sn"], "REY-NUEVA1")
+        self.assertEqual(fila["fecha_baja"], "2026-11-03")
 
 
 if __name__ == "__main__":
