@@ -437,6 +437,75 @@ async function guardarEquipoUsuario(evento) {
   }
 }
 
+function fechaHoyLocal() {
+  const f = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${f.getFullYear()}-${p(f.getMonth() + 1)}-${p(f.getDate())}`;
+}
+
+function abrirSustitucionUsuario(equipo) {
+  if (!estado.sedes.length) {
+    toast("No tienes una sede asignada.", "error");
+    return;
+  }
+  $("sust-form").reset();
+  $("sust-status").textContent = "";
+  $("sust-vieja").value = equipo?.sn || "";
+  const valores = {
+    "sust-marca": equipo?.marca || "",
+    "sust-modelo": equipo?.modelo || "",
+    "sust-piso": equipo?.piso || "",
+    "sust-contador": equipo?.contador_inicial || "",
+  };
+  for (const [id, valor] of Object.entries(valores)) $(id).value = valor;
+  $("sust-fecha-baja").value = fechaHoyLocal();
+  $("sust-sede").textContent = equipo?.sede || "—";
+  $("sust-dialog").showModal();
+  window.setTimeout(() => $("sust-nueva").focus(), 60);
+}
+
+async function guardarSustitucionUsuario(evento) {
+  evento.preventDefault();
+  const datos = {
+    vieja: $("sust-vieja").value.trim(),
+    nueva: $("sust-nueva").value.trim(),
+    marca: $("sust-marca").value.trim(),
+    modelo: $("sust-modelo").value.trim(),
+    tipo: $("sust-tipo").value.trim(),
+    perfil: $("sust-perfil").value.trim(),
+    ip_fisica: $("sust-ip-fisica").value.trim(),
+    ip_hp: $("sust-ip-hp").value.trim(),
+    ip_ekm: $("sust-ip-ekm").value.trim(),
+    piso: $("sust-piso").value.trim(),
+    contador_inicial: $("sust-contador").value.trim(),
+    fecha_baja: $("sust-fecha-baja").value,
+  };
+  if (!datos.nueva) {
+    $("sust-status").textContent = "Falta la serie nueva.";
+    return;
+  }
+  try {
+    const d = await api("/api/equipos/sustituir", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(datos),
+    });
+    if (!d.ok) {
+      $("sust-status").textContent = d.detalle || "No se pudo exportar el Excel.";
+      return;
+    }
+    $("sust-dialog").close();
+    toast(
+      `Sustitución ${d.vieja} → ${d.nueva} · ${d.sede}` +
+      (d.reanudada ? " (reanudada)" : ""),
+      "ok",
+    );
+    await cargarCobertura(true);
+  } catch (error) {
+    $("sust-status").textContent = error.message;
+  }
+}
+
 function renderResumenSeriales(r) {
   const contenedor = $("resumen-seriales");
   contenedor.textContent = "";
@@ -1316,6 +1385,14 @@ function renderCobertura() {
       btn.hidden = historico;
       btn.addEventListener("click", () => abrirEquipoForm(e));
       tdAcc.appendChild(btn);
+      const btnSust = document.createElement("button");
+      btnSust.type = "button";
+      btnSust.className = "btn-text";
+      btnSust.textContent = "Sustituir";
+      btnSust.hidden = historico;
+      btnSust.addEventListener("click", () => abrirSustitucionUsuario(e));
+      tdAcc.appendChild(document.createTextNode(" "));
+      tdAcc.appendChild(btnSust);
       tr.appendChild(tdAcc);
       cuerpoF.appendChild(tr);
     }
@@ -1433,6 +1510,8 @@ async function iniciar() {
   $("cov-clear").addEventListener("click", limpiarFiltrosCobertura);
   $("eq-cancel").addEventListener("click", () => $("equipo-dialog").close());
   $("equipo-form").addEventListener("submit", guardarEquipoUsuario);
+  $("sust-form").addEventListener("submit", guardarSustitucionUsuario);
+  $("sust-cancel").addEventListener("click", () => $("sust-dialog").close());
   let timerEqUbicacion = null;
   $("eq-ubicacion").addEventListener("input", (e) => {
     clearTimeout(timerEqUbicacion);

@@ -30,6 +30,22 @@ class EquipoEntrada(BaseModel):
     confirmar_ubicacion: bool = False
 
 
+class SustitucionEntrada(BaseModel):
+    model_config = ConfigDict(extra="ignore", coerce_numbers_to_str=True)
+    vieja: Annotated[str, Field(max_length=256)]
+    nueva: Annotated[str, Field(max_length=256)]
+    fecha_baja: Annotated[str, Field(max_length=10, pattern=r"^(\d{4}-\d{2}-\d{2})?$")] | None = None
+    marca: Texto | None = None
+    modelo: Texto | None = None
+    tipo: Texto | None = None
+    perfil: Texto | None = None
+    ip_fisica: Texto | None = None
+    ip_hp: Texto | None = None
+    ip_ekm: Texto | None = None
+    piso: Texto | None = None
+    contador_inicial: Texto | None = None
+
+
 class BorradoEquiposEntrada(BaseModel):
     model_config = ConfigDict(extra="ignore")
     confirm: Annotated[str, Field(max_length=16)] = ""

@@ -182,6 +182,9 @@ function conectarEventos() {
   $("scan-view").addEventListener("change", (e) => cambiarVistaOcr(e.target.value));
 
   $("inv-form").addEventListener("submit", guardarEquipo);
+  $("sust-form").addEventListener("submit", guardarSustitucion);
+  $("sust-cancel").addEventListener("click", () => $("sust-dialog").close());
+  $("sust-modal-close").addEventListener("click", () => $("sust-dialog").close());
   $("inv-cancel").addEventListener("click", () => {
     if (cerrarModalInventario()) limpiarFormulario();
   });
@@ -899,15 +902,22 @@ function pintarEquipos(equipos) {
     const editar = el("button", "row-action", "Editar");
     editar.type = "button";
     editar.addEventListener("click", () => editarEquipo(e));
+    const sustituir = el("button", "row-action", "Sustituir");
+    sustituir.type = "button";
+    sustituir.addEventListener("click", () => abrirSustitucion(e));
     const borrar = el("button", "row-action", "Borrar");
     borrar.type = "button";
     borrar.addEventListener("click", () => borrarEquipo(e.sn));
-    acciones.append(editar, document.createTextNode(" "), borrar);
+    acciones.append(editar, document.createTextNode(" "), sustituir, document.createTextNode(" "), borrar);
+    const celdaEstatus = celdaEstatusAdmin(e.estatus);
+    if (e.sustituto_sn) {
+      celdaEstatus.appendChild(el("span", "sustituto-ref", ` → ${e.sustituto_sn}`));
+    }
     tr.append(
       el("td", "", e.sn), el("td", "", e.marca || "—"),
       el("td", "", e.modelo || "—"), el("td", "", e.sede || "—"),
       el("td", "", e.zona || "—"), el("td", "", e.ubicacion || "—"),
-      el("td", "", e.piso || "—"), celdaEstatusAdmin(e.estatus),
+      el("td", "", e.piso || "—"), celdaEstatus,
       el("td", "", (e.origen_hoja || "—").slice(0, 36)), acciones,
     );
     body.appendChild(tr);
@@ -1126,6 +1136,77 @@ async function guardarEquipo(evento) {
     await cargarSedes();
   } catch (error) {
     set("inv-form-status", error.message);
+  }
+}
+
+function hoyLocal() {
+  const f = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${f.getFullYear()}-${p(f.getMonth() + 1)}-${p(f.getDate())}`;
+}
+
+function abrirSustitucion(e) {
+  const dialogo = $("sust-dialog");
+  $("sust-vieja").value = e.sn || "";
+  $("sust-nueva").value = "";
+  const valores = {
+    "sust-marca": e.marca || "",
+    "sust-modelo": e.modelo || "",
+    "sust-tipo": e.tipo || "",
+    "sust-perfil": e.perfil || "",
+    "sust-ip-fisica": e.ip_fisica || "",
+    "sust-ip-hp": e.ip_hp || "",
+    "sust-ip-ekm": e.ip_ekm || "",
+    "sust-piso": e.piso || "",
+    "sust-contador": e.contador_inicial || "",
+  };
+  for (const [id, valor] of Object.entries(valores)) $(id).value = valor;
+  $("sust-fecha-baja").value = hoyLocal();
+  set("sust-sede", e.sede || "—");
+  set("sust-form-status", "");
+  if (!dialogo.open) dialogo.showModal();
+  window.setTimeout(() => $("sust-nueva").focus(), 60);
+}
+
+async function guardarSustitucion(evento) {
+  evento.preventDefault();
+  const datos = {
+    vieja: $("sust-vieja").value.trim(),
+    nueva: $("sust-nueva").value.trim(),
+    marca: $("sust-marca").value.trim(),
+    modelo: $("sust-modelo").value.trim(),
+    tipo: $("sust-tipo").value.trim(),
+    perfil: $("sust-perfil").value.trim(),
+    ip_fisica: $("sust-ip-fisica").value.trim(),
+    ip_hp: $("sust-ip-hp").value.trim(),
+    ip_ekm: $("sust-ip-ekm").value.trim(),
+    piso: $("sust-piso").value.trim(),
+    contador_inicial: $("sust-contador").value.trim(),
+    fecha_baja: $("sust-fecha-baja").value,
+  };
+  if (!datos.nueva) {
+    set("sust-form-status", "Falta la serie nueva.");
+    return;
+  }
+  try {
+    const d = await api("/api/equipos/sustituir", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(datos),
+    });
+    if (!d.ok) {
+      set("sust-form-status", d.detalle || "No se pudo exportar el Excel.");
+      return;
+    }
+    $("sust-dialog").close();
+    set("inv-status",
+      `Sustitución ${d.vieja} → ${d.nueva} · ${d.sede}` +
+      (d.reanudada ? " (reanudada)" : "") + ` · ${d.total} seriales`);
+    await cargarInventario();
+    await cargarOverview();
+    await cargarSedes();
+  } catch (error) {
+    set("sust-form-status", error.message);
   }
 }
 

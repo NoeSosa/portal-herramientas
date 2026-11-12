@@ -241,6 +241,36 @@
         </p>
       </dialog>
 
+      <dialog id="sust-dialog" class="admin-modal" aria-labelledby="sust-modal-title">
+        <div class="admin-modal-head">
+          <div>
+            <span class="mono-label">INVENTARIO / SUSTITUCIÓN</span>
+            <h2 id="sust-modal-title">Sustituir equipo</h2>
+          </div>
+          <button class="admin-modal-close" type="button" id="sust-modal-close" aria-label="Cerrar">×</button>
+        </div>
+        <form class="inventory-form" id="sust-form" autocomplete="off">
+          <label>Serie vieja<input id="sust-vieja" name="vieja" readonly></label>
+          <label>Serie nueva<input id="sust-nueva" name="nueva" required></label>
+          <label>Marca<input id="sust-marca" name="marca"></label>
+          <label>Modelo<input id="sust-modelo" name="modelo"></label>
+          <label>Tipo<input id="sust-tipo" name="tipo"></label>
+          <label>Perfil<input id="sust-perfil" name="perfil"></label>
+          <label>IP física<input id="sust-ip-fisica" name="ip_fisica"></label>
+          <label>IP HP<input id="sust-ip-hp" name="ip_hp"></label>
+          <label>IP EKM<input id="sust-ip-ekm" name="ip_ekm"></label>
+          <label>Piso<input id="sust-piso" name="piso"></label>
+          <label>Contador inicial<input id="sust-contador" name="contador_inicial"></label>
+          <label>Fecha de baja<input id="sust-fecha-baja" name="fecha_baja" type="date"></label>
+          <p class="inventory-hint">Sede: <span id="sust-sede">—</span>. La serie nueva hereda sede, zona, domicilio y ubicación de la vieja.</p>
+          <div class="inventory-form-actions">
+            <button class="btn btn-primary" type="submit" id="sust-save">Sustituir</button>
+            <button class="btn-text" type="button" id="sust-cancel">Cancelar</button>
+            <span class="mono-label" id="sust-form-status"></span>
+          </div>
+        </form>
+      </dialog>
+
       <div class="inventory-filters filter-bar" id="inv-filter-bar">
         <input type="search" id="inv-q" placeholder="serial, marca, modelo, sede, ubicación o piso…">
         <select id="inv-sede-filter" aria-label="Sede"><option value="">todas las sedes</option></select>

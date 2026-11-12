@@ -432,6 +432,13 @@
 
 .row-action:hover { color: var(--accent); }
 
+.sustituto-ref {
+  font: 500 8px/1.4 var(--mono);
+  letter-spacing: .05em;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
 /* Inventario */
 .inventory-bar {
   display: flex;

@@ -36,7 +36,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__, db, inventario
 from .peticiones import GuardiaPeticiones
-from .esquemas import BorradoEquiposEntrada, EquipoEntrada
+from .esquemas import BorradoEquiposEntrada, EquipoEntrada, SustitucionEntrada
 from .correccion_seriales import reparar_seriales_job
 from .normalizacion import normalizar_serial, normalizar_serial_alterno
 from .auth import (
@@ -136,6 +136,16 @@ async def serial_ambiguo(request: Request, exc: db.SerialAmbiguo):
 @app.exception_handler(db.SerialInvalido)
 async def serial_invalido(request: Request, exc: db.SerialInvalido):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(db.EquipoNoEncontrado)
+async def equipo_no_encontrado(request: Request, exc: db.EquipoNoEncontrado):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(db.SustitucionError)
+async def sustitucion_error(request: Request, exc: db.SustitucionError):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)
@@ -603,6 +613,53 @@ async def guardar_equipo_usuario(
             ip=ip_cliente(request), detail=f"{sn} · {sede}",
         )
         return {"ok": ok, "sn": sn, "creado": creado,
+                "total": db.contar_equipos(con), "exportado": ok,
+                "detalle": detalle}
+    finally:
+        con.close()
+
+
+@app.post("/api/equipos/sustituir")
+async def sustituir_equipo_usuario(
+    request: Request, entrada: SustitucionEntrada,
+    usuario=Depends(usuario_actual), _csrf=Depends(verificar_csrf),
+) -> dict[str, Any]:
+    datos = entrada.model_dump(exclude_unset=True)
+    vieja = (datos.get("vieja") or "").strip()
+    nueva = (datos.get("nueva") or "").strip()
+    if not db.normalizar_serial(vieja) or not db.normalizar_serial(nueva):
+        raise HTTPException(status_code=400, detail="Faltan las series vieja y nueva.")
+    con = _conexion()
+    try:
+        permitidas = None if usuario["role"] == "admin" else set(
+            db.sedes_usuario(con, int(usuario["id"]))
+        )
+        # La autorización y la escritura observan la misma versión del equipo.
+        con.execute("BEGIN IMMEDIATE")
+        vieja_row = db.buscar_equipo(con, vieja)
+        if vieja_row is None:
+            raise HTTPException(
+                status_code=404, detail="No se encontró la serie vieja en el inventario."
+            )
+        if permitidas is not None and (vieja_row["sede"] or "") not in permitidas:
+            raise HTTPException(status_code=403, detail="Esa sede no está asignada a tu usuario.")
+        resultado = db.sustituir_equipo(
+            con, vieja=vieja, nueva=nueva,
+            fecha_baja=(datos.get("fecha_baja") or None),
+            marca=datos.get("marca"), modelo=datos.get("modelo"),
+            tipo=datos.get("tipo"), perfil=datos.get("perfil"),
+            ip_fisica=datos.get("ip_fisica"), ip_hp=datos.get("ip_hp"),
+            ip_ekm=datos.get("ip_ekm"), piso=datos.get("piso"),
+            contador_inicial=datos.get("contador_inicial"),
+        )
+        ok, detalle, _ = _exportar_inventario(con)
+        db.auditar(
+            con, user_id=int(usuario["id"]), email=usuario["email"],
+            action="inventario_sustitucion", ip=ip_cliente(request),
+            detail=f"{resultado['vieja']} -> {resultado['nueva']} · {resultado['sede']}",
+        )
+        return {"ok": ok, "vieja": resultado["vieja"], "nueva": resultado["nueva"],
+                "sede": resultado["sede"], "reanudada": resultado["reanudada"],
                 "total": db.contar_equipos(con), "exportado": ok,
                 "detalle": detalle}
     finally:

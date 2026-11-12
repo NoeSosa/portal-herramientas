@@ -323,6 +323,32 @@
     </form>
   </dialog>
 
+  <dialog id="sust-dialog" class="profile-dialog equipo-dialog">
+    <form id="sust-form" autocomplete="off">
+      <div class="section-label"><span class="section-num">04</span><span class="mono-label">SUSTITUIR EQUIPO</span></div>
+      <div class="equipo-form-grid">
+        <label>Serie vieja<input id="sust-vieja" maxlength="256" readonly></label>
+        <label>Serie nueva<input id="sust-nueva" maxlength="256" required></label>
+        <label>Marca<input id="sust-marca" maxlength="120"></label>
+        <label>Modelo<input id="sust-modelo" maxlength="160"></label>
+        <label>Tipo<input id="sust-tipo" maxlength="120"></label>
+        <label>Perfil<input id="sust-perfil" maxlength="80"></label>
+        <label>IP física<input id="sust-ip-fisica" maxlength="80"></label>
+        <label>IP HP<input id="sust-ip-hp" maxlength="80"></label>
+        <label>IP EKM<input id="sust-ip-ekm" maxlength="80"></label>
+        <label>Piso<input id="sust-piso" maxlength="80"></label>
+        <label>Contador inicial<input id="sust-contador" maxlength="80"></label>
+        <label>Fecha de baja<input id="sust-fecha-baja" type="date"></label>
+      </div>
+      <p class="form-status">Sede: <span id="sust-sede">—</span>. La serie nueva hereda sede, zona, domicilio y ubicación de la vieja.</p>
+      <p class="form-status" id="sust-status" role="status"></p>
+      <div class="profile-actions">
+        <button class="btn btn-primary" type="submit">Sustituir</button>
+        <button class="btn-text" type="button" id="sust-cancel">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="resultado-dialog" class="profile-dialog result-dialog">
     <div class="section-label"><span class="section-num">02</span><span class="mono-label">RESULTADO</span></div>
     <h2 id="resumen-nombre">—</h2>

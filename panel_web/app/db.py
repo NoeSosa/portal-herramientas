@@ -984,6 +984,14 @@ class SerialInvalido(ValueError):
     pass
 
 
+class EquipoNoEncontrado(LookupError):
+    """La serie vieja no existe en el inventario."""
+
+
+class SustitucionError(ValueError):
+    """La sustitución no se puede realizar (nueva existente o vieja retirada)."""
+
+
 def buscar_equipo(con: sqlite3.Connection, sn: str):
     original = (sn or "").strip().upper()
     exacto = con.execute("SELECT * FROM equipos WHERE sn=?", (original,)).fetchone()
@@ -1030,6 +1038,98 @@ def upsert_equipo(con: sqlite3.Connection, sn: str, *, reconciliar: bool = True,
         actualizar_cobertura_inventario(con)
     con.commit()
     return (not existia), sn
+
+
+def sustituir_equipo(
+    con: sqlite3.Connection,
+    *,
+    vieja: str,
+    nueva: str,
+    fecha_baja: str | None = None,
+    marca: str | None = None,
+    modelo: str | None = None,
+    tipo: str | None = None,
+    perfil: str | None = None,
+    ip_fisica: str | None = None,
+    ip_hp: str | None = None,
+    ip_ekm: str | None = None,
+    piso: str | None = None,
+    contador_inicial: str | None = None,
+) -> dict[str, Any]:
+    """Sustitución atómica en lo posible: valida todo antes de escribir.
+
+    La vieja se localiza con `buscar_equipo` (exacta, `sn_norm`, alterna);
+    `SerialAmbiguo` se propaga y una serie ausente levanta
+    `EquipoNoEncontrado`, sin escrituras. La nueva hereda sede, zona,
+    domicilio, ubicación y origen de la vieja; marca, modelo, tipo, perfil,
+    IPs, piso y contador llegan del llamador o heredan de la vieja cuando
+    son `None`. `fecha_alta` de la nueva y `fecha_baja` de la vieja (default
+    hoy en `_TZ_CUOTA`) se fijan con `UPDATE` directo porque `CAMPOS_EQUIPO`
+    no incluye esos campos. Si la nueva ya existe y la vieja ya la referencia
+    en `sustituto_sn` sin estar `Retirada`, solo se completa el retiro de la
+    vieja (recuperación tras un corte a mitad). La cobertura del mes abierto
+    se reconcilia una sola vez al final. La auditoría la escribe el handler.
+    """
+    hoy = datetime.now(_TZ_CUOTA).strftime("%Y-%m-%d")
+    baja = (fecha_baja or "").strip() or hoy
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", baja):
+        raise SustitucionError("La fecha de baja debe tener formato AAAA-MM-DD.")
+    vieja_row = buscar_equipo(con, vieja)
+    if vieja_row is None:
+        raise EquipoNoEncontrado("No se encontró la serie vieja en el inventario.")
+    vieja_sn = vieja_row["sn"]
+    if (vieja_row["estatus"] or "") == "Retirada":
+        raise SustitucionError("La serie vieja ya está Retirada; no se puede sustituir de nuevo.")
+    nueva_row = buscar_equipo(con, nueva)
+    reanudada = False
+    if nueva_row is not None:
+        referencia = (vieja_row["sustituto_sn"] or "").strip().upper()
+        if referencia and referencia == nueva_row["sn"].strip().upper():
+            reanudada = True
+        else:
+            raise SustitucionError("La serie nueva ya existe en el inventario.")
+    if not reanudada:
+        def heredado(valor, campo):
+            return vieja_row[campo] if valor is None else valor
+
+        campos = {
+            "marca": heredado(marca, "marca"),
+            "modelo": heredado(modelo, "modelo"),
+            "tipo": heredado(tipo, "tipo"),
+            "sede": vieja_row["sede"],
+            "zona": vieja_row["zona"],
+            "domicilio": vieja_row["domicilio"],
+            "ubicacion": vieja_row["ubicacion"],
+            "piso": heredado(piso, "piso"),
+            "ip_fisica": heredado(ip_fisica, "ip_fisica"),
+            "ip_hp": heredado(ip_hp, "ip_hp"),
+            "ip_ekm": heredado(ip_ekm, "ip_ekm"),
+            "perfil": heredado(perfil, "perfil"),
+            "estatus": "En Operación",
+            "contador_inicial": heredado(contador_inicial, "contador_inicial"),
+            "origen_hoja": vieja_row["origen_hoja"],
+        }
+        _creado, nueva_sn = upsert_equipo(con, nueva, reconciliar=False, **campos)
+        # fecha_alta no está en CAMPOS_EQUIPO: UPDATE directo documentado.
+        con.execute("UPDATE equipos SET fecha_alta=? WHERE sn=?", (hoy, nueva_sn))
+        con.commit()
+    else:
+        nueva_sn = nueva_row["sn"]
+    upsert_equipo(
+        con, vieja_sn, reconciliar=False,
+        estatus="Retirada", sustituto_sn=nueva_sn,
+    )
+    # fecha_baja no está en CAMPOS_EQUIPO: UPDATE directo documentado.
+    con.execute("UPDATE equipos SET fecha_baja=? WHERE sn=?", (baja, vieja_sn))
+    con.commit()
+    actualizar_cobertura_inventario(con)
+    con.commit()
+    return {
+        "vieja": vieja_sn,
+        "nueva": nueva_sn,
+        "sede": vieja_row["sede"] or "",
+        "reanudada": reanudada,
+    }
 
 
 def borrar_equipo(con: sqlite3.Connection, sn: str) -> bool:
@@ -1083,7 +1183,8 @@ def listar_equipos(
     direccion = "DESC" if descendente else "ASC"
     filas = con.execute(
         f"SELECT sn, marca, modelo, tipo, sede, zona, domicilio, ubicacion,"
-        f" piso, estatus, contador_inicial, origen_hoja, actualizado_en"
+        f" piso, estatus, contador_inicial, origen_hoja, actualizado_en,"
+        f" perfil, ip_fisica, ip_hp, ip_ekm, sustituto_sn, fecha_alta, fecha_baja"
         f" FROM equipos{where}"
         f" ORDER BY {campo} {direccion} LIMIT ? OFFSET ?",
         params + [max(1, min(500, int(limite))), max(0, int(offset))],
