@@ -1006,7 +1006,17 @@ class EquipoNoEncontrado(LookupError):
 
 
 class SustitucionError(ValueError):
-    """La sustitución no se puede realizar (nueva existente o vieja retirada)."""
+    """La sustitución no se puede realizar (sustituta inexistente, cruce de
+    sede sin confirmar o vieja retirada). `sede_origen`/`sede_destino` solo
+    vienen en el cruce: la sede actual de la sustituta y la de la vieja."""
+
+    def __init__(
+        self, mensaje: str, *, sede_origen: str | None = None,
+        sede_destino: str | None = None,
+    ) -> None:
+        super().__init__(mensaje)
+        self.sede_origen = sede_origen
+        self.sede_destino = sede_destino
 
 
 def buscar_equipo(con: sqlite3.Connection, sn: str):
@@ -1063,6 +1073,7 @@ def sustituir_equipo(
     vieja: str,
     nueva: str,
     fecha_baja: str | None = None,
+    confirmar_cruce: bool = False,
     marca: str | None = None,
     modelo: str | None = None,
     tipo: str | None = None,
@@ -1077,16 +1088,24 @@ def sustituir_equipo(
 
     La vieja se localiza con `buscar_equipo` (exacta, `sn_norm`, alterna);
     `SerialAmbiguo` se propaga y una serie ausente levanta
-    `EquipoNoEncontrado`, sin escrituras. La nueva hereda sede, zona,
-    domicilio, ubicación y origen de la vieja; marca, modelo, tipo, perfil,
-    IPs, piso y contador llegan del llamador o heredan de la vieja cuando
-    son `None`. `fecha_alta` de la nueva y `fecha_baja` de la vieja (default
-    hoy en `_TZ_CUOTA`) se fijan con `UPDATE` directo para fijar la fecha
-    exacta de la operación. Si la nueva ya existe y la vieja ya la referencia
-    en `sustituto_sn`, solo se completa el retiro de la vieja (recuperación
+    `EquipoNoEncontrado`, sin escrituras. La sustituta debe existir ya en
+    inventario (si no, `SustitucionError` "dala de alta primero", sin
+    escrituras) y conserva sus datos: marca, modelo, tipo, perfil, IPs,
+    piso, contador y `fecha_alta` no se sobrescriben y los overrides del
+    llamador se ignoran. Si la sustituta está en otra sede que la vieja
+    (comparación exacta tras `strip`; vacía cuenta como distinta salvo que
+    ambas estén vacías) y `confirmar_cruce` es falso, levanta
+    `SustitucionError` con `sede_origen` (sede actual de la sustituta) y
+    `sede_destino` (sede de la vieja), sin escrituras; con
+    `confirmar_cruce` verdadero la sustituta se mueve a la sede de la
+    vieja. La vieja pasa a `Retirada` con `sustituto_sn` y `fecha_baja`
+    (default hoy en `_TZ_CUOTA`, fijada con `UPDATE` directo para la fecha
+    exacta de la operación). Si la vieja ya referencia a la sustituta en
+    `sustituto_sn`, solo se completa el retiro de la vieja (recuperación
     tras un corte a mitad, incluso si la vieja ya quedó `Retirada` sin
-    `fecha_baja`). La cobertura del mes abierto
-    se reconcilia una sola vez al final. La auditoría la escribe el handler.
+    `fecha_baja`); la sustituta ya quedó en la sede destino, así que no
+    exige confirmación. La cobertura del mes abierto se reconcilia una
+    sola vez al final. La auditoría la escribe el handler.
     """
     hoy = datetime.now(_TZ_CUOTA).strftime("%Y-%m-%d")
     baja = (fecha_baja or "").strip() or hoy
@@ -1105,33 +1124,30 @@ def sustituir_equipo(
             reanudada = True
     if es_retirada and not reanudada:
         raise SustitucionError("La serie vieja ya está Retirada; no se puede sustituir de nuevo.")
-    if nueva_row is not None and not reanudada:
-        raise SustitucionError("La serie nueva ya existe en el inventario.")
+    if nueva_row is None:
+        raise SustitucionError(
+            f"La sustituta {(nueva or '').strip().upper()} no existe en inventario; "
+            "dala de alta primero."
+        )
+    if not reanudada and nueva_row["sn"] == vieja_sn:
+        raise SustitucionError("La serie nueva no puede ser la misma que la vieja.")
+    sede_vieja = (vieja_row["sede"] or "").strip()
+    sede_nueva = (nueva_row["sede"] or "").strip()
+    cruce_desde = None
+    if not reanudada and sede_nueva != sede_vieja:
+        if not confirmar_cruce:
+            raise SustitucionError(
+                f"La sustituta {nueva_row['sn']} está en otra sede "
+                f"({sede_nueva or 'sin sede'}).",
+                sede_origen=sede_nueva, sede_destino=sede_vieja,
+            )
+        cruce_desde = sede_nueva
     if not reanudada:
-        def heredado(valor, campo):
-            return vieja_row[campo] if valor is None else valor
-
-        campos = {
-            "marca": heredado(marca, "marca"),
-            "modelo": heredado(modelo, "modelo"),
-            "tipo": heredado(tipo, "tipo"),
-            "sede": vieja_row["sede"],
-            "zona": vieja_row["zona"],
-            "domicilio": vieja_row["domicilio"],
-            "ubicacion": vieja_row["ubicacion"],
-            "piso": heredado(piso, "piso"),
-            "ip_fisica": heredado(ip_fisica, "ip_fisica"),
-            "ip_hp": heredado(ip_hp, "ip_hp"),
-            "ip_ekm": heredado(ip_ekm, "ip_ekm"),
-            "perfil": heredado(perfil, "perfil"),
-            "estatus": "En Operación",
-            "contador_inicial": heredado(contador_inicial, "contador_inicial"),
-            "origen_hoja": vieja_row["origen_hoja"],
-        }
-        _creado, nueva_sn = upsert_equipo(con, nueva, reconciliar=False, **campos)
-        # fecha_alta no está en CAMPOS_EQUIPO: UPDATE directo documentado.
-        con.execute("UPDATE equipos SET fecha_alta=? WHERE sn=?", (hoy, nueva_sn))
-        con.commit()
+        # La sustituta conserva sus datos; solo se mueve su sede si hubo cruce.
+        nueva_sn = nueva_row["sn"]
+        if cruce_desde is not None:
+            con.execute("UPDATE equipos SET sede=? WHERE sn=?", (sede_vieja, nueva_sn))
+            con.commit()
     else:
         nueva_sn = nueva_row["sn"]
     upsert_equipo(
@@ -1149,6 +1165,7 @@ def sustituir_equipo(
         "nueva": nueva_sn,
         "sede": vieja_row["sede"] or "",
         "reanudada": reanudada,
+        "cruce_desde": cruce_desde,
     }
 
 

@@ -145,6 +145,11 @@ async def equipo_no_encontrado(request: Request, exc: db.EquipoNoEncontrado):
 
 @app.exception_handler(db.SustitucionError)
 async def sustitucion_error(request: Request, exc: db.SustitucionError):
+    if exc.sede_origen is not None:
+        return JSONResponse(status_code=409, content={"detail": {
+            "mensaje": str(exc), "sede_origen": exc.sede_origen,
+            "sede_destino": exc.sede_destino,
+        }})
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
@@ -567,6 +572,39 @@ async def ubicaciones_usuario(
         con.close()
 
 
+def _validar_sustituto_en_edicion(
+    con, existente, sustituto_raw, sede_final, confirmar_cruce
+) -> None:
+    """Valida el enlace de sustitución al editar (sin mover la sustituta).
+
+    Solo aplica si la fila ya existe y el sustituto enviado es no vacío y
+    distinto del actual. Inexistente → 409; otra sede sin confirmar_cruce →
+    409 con sede_origen/sede_destino; con confirmar_cruce se permite el
+    enlace sin tocar la sede del sustituto.
+    """
+    sust = (sustituto_raw or "").strip()
+    if not sust or existente is None:
+        return
+    actual = (existente["sustituto_sn"] or "").strip().upper()
+    if actual and actual == sust.upper():
+        return
+    fila = db.buscar_equipo(con, sust)
+    if fila is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"La sustituta {sust.upper()} no existe en inventario; "
+            "dala de alta primero.",
+        )
+    sede_sust = (fila["sede"] or "").strip()
+    destino = (sede_final or "").strip()
+    if sede_sust != destino and not confirmar_cruce:
+        raise HTTPException(status_code=409, detail={
+            "mensaje": f"La sustituta {fila['sn']} está en otra sede "
+            f"({sede_sust or 'sin sede'}).",
+            "sede_origen": sede_sust, "sede_destino": destino,
+        })
+
+
 @app.post("/api/equipos")
 async def guardar_equipo_usuario(
     request: Request, entrada: EquipoEntrada,
@@ -601,6 +639,10 @@ async def guardar_equipo_usuario(
             if not sede:
                 raise HTTPException(status_code=400, detail="Falta la sede.")
         datos["sede"] = sede
+        _validar_sustituto_en_edicion(
+            con, existente, datos.get("sustituto_sn"), sede,
+            bool(datos.get("confirmar_cruce")),
+        )
         permitidos = {c: datos.get(c, "") for c in db.CAMPOS_EQUIPO if c in datos}
         if not (permitidos.get("sede") or "").strip() and permitidos.get("domicilio"):
             permitidos["sede"] = permitidos["domicilio"]
@@ -646,6 +688,7 @@ async def sustituir_equipo_usuario(
         resultado = db.sustituir_equipo(
             con, vieja=vieja, nueva=nueva,
             fecha_baja=(datos.get("fecha_baja") or None),
+            confirmar_cruce=bool(datos.get("confirmar_cruce")),
             marca=datos.get("marca"), modelo=datos.get("modelo"),
             tipo=datos.get("tipo"), perfil=datos.get("perfil"),
             ip_fisica=datos.get("ip_fisica"), ip_hp=datos.get("ip_hp"),
@@ -653,10 +696,13 @@ async def sustituir_equipo_usuario(
             contador_inicial=datos.get("contador_inicial"),
         )
         ok, detalle, _ = _exportar_inventario(con)
+        detalle_audit = f"{resultado['vieja']} -> {resultado['nueva']} · {resultado['sede']}"
+        if resultado.get("cruce_desde"):
+            detalle_audit += f" · cruce desde {resultado['cruce_desde']}"
         db.auditar(
             con, user_id=int(usuario["id"]), email=usuario["email"],
             action="inventario_sustitucion", ip=ip_cliente(request),
-            detail=f"{resultado['vieja']} -> {resultado['nueva']} · {resultado['sede']}",
+            detail=detalle_audit,
         )
         return {"ok": ok, "vieja": resultado["vieja"], "nueva": resultado["nueva"],
                 "sede": resultado["sede"], "reanudada": resultado["reanudada"],
@@ -1360,10 +1406,18 @@ async def admin_guardar_equipo(
         raise HTTPException(status_code=400, detail="Falta el serial.")
     con = _conexion()
     try:
+        existente = db.buscar_equipo(con, sn)
         permitidos = {c: datos.get(c, "") for c in db.CAMPOS_EQUIPO if c in datos}
         # SEDE vacía se deriva del domicilio, igual que el pipeline local.
         if not (permitidos.get("sede") or "").strip() and permitidos.get("domicilio"):
             permitidos["sede"] = permitidos["domicilio"]
+        sede_final = (permitidos.get("sede") or "").strip() or (
+            (existente["sede"] or "") if existente else ""
+        )
+        _validar_sustituto_en_edicion(
+            con, existente, permitidos.get("sustituto_sn"), sede_final,
+            bool(datos.get("confirmar_cruce")),
+        )
         _validar_ubicacion_nueva(con, datos, permitidos.get("sede") or "")
         creado, sn = db.upsert_equipo(con, sn, **permitidos)
         ok, detalle, _ = _exportar_inventario(con)

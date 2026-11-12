@@ -77,28 +77,45 @@ class SustitucionDBTest(unittest.TestCase):
             "SELECT * FROM equipos WHERE sn=?", (sn,)
         ).fetchone()
 
-    def test_camino_feliz_hereda_y_sobrescribe(self) -> None:
+    def test_misma_sede_existe_conserva_datos(self) -> None:
+        db.upsert_equipo(
+            self.con, "NUEVA001", marca="Ricoh", modelo="IM 430F",
+            tipo="Multifuncional", sede="Reynosa", zona="9", domicilio="Otro",
+            ubicacion="Primero Penal", piso="3", ip_fisica="10.0.0.9",
+            ip_hp="10.0.0.10", ip_ekm="10.0.0.11", perfil="A2",
+            estatus="En Operación", contador_inicial="42",
+        )
+        self.con.execute(
+            "UPDATE equipos SET fecha_alta='2026-10-01' WHERE sn='NUEVA001'"
+        )
+        self.con.commit()
         resultado = db.sustituir_equipo(
-            self.con, vieja="VIEJA001", nueva="NUEVA001", marca="Ricoh",
+            self.con, vieja="VIEJA001", nueva="NUEVA001", marca="Otra",
+            modelo="Otro", tipo="Otro", perfil="C1", ip_fisica="9.9.9.9",
+            piso="8", contador_inicial="999",
         )
         self.assertEqual(resultado["vieja"], "VIEJA001")
         self.assertEqual(resultado["nueva"], "NUEVA001")
         self.assertEqual(resultado["sede"], "Reynosa")
         self.assertFalse(resultado["reanudada"])
+        self.assertIsNone(resultado["cruce_desde"])
         nueva = self.fila("NUEVA001")
-        self.assertEqual(nueva["marca"], "Ricoh")  # sobrescrita
-        self.assertEqual(nueva["modelo"], "M501")  # heredada
+        # La sustituta conserva sus datos; los overrides se ignoran.
+        self.assertEqual(nueva["marca"], "Ricoh")
+        self.assertEqual(nueva["modelo"], "IM 430F")
         self.assertEqual(nueva["tipo"], "Multifuncional")
-        self.assertEqual(nueva["perfil"], "A1")
-        self.assertEqual(nueva["ip_fisica"], "10.0.0.1")
+        self.assertEqual(nueva["perfil"], "A2")
+        self.assertEqual(nueva["ip_fisica"], "10.0.0.9")
+        self.assertEqual(nueva["ip_hp"], "10.0.0.10")
+        self.assertEqual(nueva["ip_ekm"], "10.0.0.11")
         self.assertEqual(nueva["sede"], "Reynosa")
         self.assertEqual(nueva["zona"], "9")
-        self.assertEqual(nueva["domicilio"], "Dom")
-        self.assertEqual(nueva["ubicacion"], "Segundos Penal")
-        self.assertEqual(nueva["piso"], "2")
+        self.assertEqual(nueva["domicilio"], "Otro")
+        self.assertEqual(nueva["ubicacion"], "Primero Penal")
+        self.assertEqual(nueva["piso"], "3")
         self.assertEqual(nueva["estatus"], "En Operación")
-        self.assertEqual(nueva["contador_inicial"], "100")
-        self.assertEqual(nueva["fecha_alta"], hoy_local())
+        self.assertEqual(nueva["contador_inicial"], "42")
+        self.assertEqual(nueva["fecha_alta"], "2026-10-01")
         vieja = self.fila("VIEJA001")
         self.assertEqual(vieja["estatus"], "Retirada")
         self.assertEqual(vieja["sustituto_sn"], "NUEVA001")
@@ -112,19 +129,50 @@ class SustitucionDBTest(unittest.TestCase):
         self.assertEqual(en_cobertura, 1)
 
     def test_fecha_baja_explicita(self) -> None:
+        db.upsert_equipo(self.con, "NUEVA002", sede="Reynosa",
+                         estatus="En Operación")
         db.sustituir_equipo(
             self.con, vieja="VIEJA001", nueva="NUEVA002",
             fecha_baja="2026-11-01",
         )
         self.assertEqual(self.fila("VIEJA001")["fecha_baja"], "2026-11-01")
 
-    def test_nueva_existente_aborta_sin_escrituras(self) -> None:
-        db.upsert_equipo(self.con, "NUEVA003", sede="Reynosa")
-        with self.assertRaises(db.SustitucionError):
-            db.sustituir_equipo(self.con, vieja="VIEJA001", nueva="NUEVA003")
+    def test_no_existe_aborta_sin_escrituras(self) -> None:
+        with self.assertRaises(db.SustitucionError) as ctx:
+            db.sustituir_equipo(self.con, vieja="VIEJA001", nueva="NUEVA-NOEX")
+        self.assertIn("dala de alta primero", str(ctx.exception))
         vieja = self.fila("VIEJA001")
         self.assertEqual(vieja["estatus"], "En Operación")
         self.assertIsNone(vieja["sustituto_sn"])
+        self.assertEqual(db.contar_equipos(self.con), 1)
+
+    def test_cruce_sin_confirmar_aborta_sin_escrituras(self) -> None:
+        db.upsert_equipo(self.con, "NUEVA-CRUCE", sede="Tampico",
+                         estatus="En Operación")
+        with self.assertRaises(db.SustitucionError) as ctx:
+            db.sustituir_equipo(self.con, vieja="VIEJA001", nueva="NUEVA-CRUCE")
+        self.assertEqual(ctx.exception.sede_origen, "Tampico")
+        self.assertEqual(ctx.exception.sede_destino, "Reynosa")
+        vieja = self.fila("VIEJA001")
+        self.assertEqual(vieja["estatus"], "En Operación")
+        self.assertIsNone(vieja["sustituto_sn"])
+        self.assertEqual(self.fila("NUEVA-CRUCE")["sede"], "Tampico")
+        self.assertEqual(db.contar_equipos(self.con), 2)
+
+    def test_cruce_confirmado_mueve_nueva(self) -> None:
+        db.upsert_equipo(self.con, "NUEVA-CRUCE2", sede="Tampico",
+                         marca="Ricoh", estatus="En Operación")
+        resultado = db.sustituir_equipo(
+            self.con, vieja="VIEJA001", nueva="NUEVA-CRUCE2",
+            confirmar_cruce=True,
+        )
+        self.assertEqual(resultado["cruce_desde"], "Tampico")
+        nueva = self.fila("NUEVA-CRUCE2")
+        self.assertEqual(nueva["sede"], "Reynosa")
+        self.assertEqual(nueva["marca"], "Ricoh")
+        vieja = self.fila("VIEJA001")
+        self.assertEqual(vieja["estatus"], "Retirada")
+        self.assertEqual(vieja["sustituto_sn"], "NUEVA-CRUCE2")
         self.assertEqual(db.contar_equipos(self.con), 2)
 
     def test_vieja_no_encontrada(self) -> None:
@@ -155,6 +203,8 @@ class SustitucionDBTest(unittest.TestCase):
 
     def test_vieja_por_variante_ocr(self) -> None:
         db.upsert_equipo(self.con, "VNB0B04743", sede="Reynosa",
+                         estatus="En Operación")
+        db.upsert_equipo(self.con, "NUEVA007", sede="Reynosa",
                          estatus="En Operación")
         resultado = db.sustituir_equipo(
             self.con, vieja="VNBOB04743", nueva="NUEVA007",
@@ -263,6 +313,10 @@ class SustitucionHTTPTest(unittest.TestCase):
             db.asignar_sedes(con, int(self.ana["id"]), ["Reynosa"])
             db.upsert_equipo(con, "REY-VIEJA1", sede="Reynosa", estatus="En Operación")
             db.upsert_equipo(con, "TAM-VIEJA1", sede="Tampico", estatus="En Operación")
+            db.upsert_equipo(con, "REY-NUEVA1", sede="Reynosa", estatus="En Operación",
+                             marca="HP", modelo="M501")
+            db.upsert_equipo(con, "REY-NUEVA2", sede="Reynosa", estatus="En Operación")
+            db.upsert_equipo(con, "TAM-NUEVA1", sede="Tampico", estatus="En Operación")
         finally:
             con.close()
         self.csrf = "test-csrf-token"
@@ -320,7 +374,7 @@ class SustitucionHTTPTest(unittest.TestCase):
         r = self.sustituir("TAM-VIEJA1", "TAM-NUEVA1")
         self.assertEqual(r.status_code, 403, r.text)
         self.assertEqual(self.fila("TAM-VIEJA1")["estatus"], "En Operación")
-        self.assertIsNone(self.fila("TAM-NUEVA1"))
+        self.assertEqual(self.fila("TAM-NUEVA1")["sede"], "Tampico")
 
     def test_admin_libre(self) -> None:
         self.sesion(self.admin)
@@ -328,11 +382,45 @@ class SustitucionHTTPTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(self.fila("TAM-VIEJA1")["estatus"], "Retirada")
 
-    def test_nueva_existente_409(self) -> None:
+    def test_cruce_409_y_reintento_200(self) -> None:
         self.sesion()
         r = self.sustituir("REY-VIEJA1", "TAM-VIEJA1")
         self.assertEqual(r.status_code, 409, r.text)
+        detalle = r.json()["detail"]
+        self.assertEqual(detalle["sede_origen"], "Tampico")
+        self.assertEqual(detalle["sede_destino"], "Reynosa")
         self.assertEqual(self.fila("REY-VIEJA1")["estatus"], "En Operación")
+        self.assertEqual(self.fila("TAM-VIEJA1")["sede"], "Tampico")
+        r2 = self.client.post(
+            "/api/equipos/sustituir", headers=self.headers(),
+            json={"vieja": "REY-VIEJA1", "nueva": "TAM-VIEJA1",
+                  "confirmar_cruce": True},
+        )
+        self.assertEqual(r2.status_code, 200, r2.text)
+        self.assertEqual(self.fila("TAM-VIEJA1")["sede"], "Reynosa")
+        vieja = self.fila("REY-VIEJA1")
+        self.assertEqual(vieja["estatus"], "Retirada")
+        self.assertEqual(vieja["sustituto_sn"], "TAM-VIEJA1")
+        con = db.conectar(main.settings.db_path)
+        try:
+            auditoria = con.execute(
+                "SELECT * FROM audit WHERE action='inventario_sustitucion'"
+            ).fetchall()
+        finally:
+            con.close()
+        self.assertEqual(len(auditoria), 1)
+        self.assertTrue(
+            auditoria[0]["detail"].endswith(" · cruce desde Tampico"),
+            auditoria[0]["detail"],
+        )
+
+    def test_no_existe_409(self) -> None:
+        self.sesion()
+        r = self.sustituir("REY-VIEJA1", "NO-EXISTE-1")
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("dala de alta primero", r.text)
+        self.assertEqual(self.fila("REY-VIEJA1")["estatus"], "En Operación")
+        self.assertIsNone(self.fila("NO-EXISTE-1"))
 
     def test_vieja_ya_retirada_409(self) -> None:
         self.sesion()
@@ -361,6 +449,46 @@ class SustitucionHTTPTest(unittest.TestCase):
         fila = self.fila("REY-VIEJA1")
         self.assertEqual(fila["sustituto_sn"], "REY-NUEVA1")
         self.assertEqual(fila["fecha_baja"], "2026-11-03")
+
+    def test_admin_edicion_cruce_409_y_confirmar(self) -> None:
+        self.sesion(self.admin)
+        r = self.client.post(
+            "/api/admin/equipos", headers=self.headers(),
+            json={"sn": "REY-VIEJA1", "sustituto_sn": "TAM-VIEJA1"},
+        )
+        self.assertEqual(r.status_code, 409, r.text)
+        detalle = r.json()["detail"]
+        self.assertEqual(detalle["sede_origen"], "Tampico")
+        self.assertEqual(detalle["sede_destino"], "Reynosa")
+        self.assertIsNone(self.fila("REY-VIEJA1")["sustituto_sn"])
+        r2 = self.client.post(
+            "/api/admin/equipos", headers=self.headers(),
+            json={"sn": "REY-VIEJA1", "sustituto_sn": "TAM-VIEJA1",
+                  "confirmar_cruce": True},
+        )
+        self.assertEqual(r2.status_code, 200, r2.text)
+        self.assertEqual(self.fila("REY-VIEJA1")["sustituto_sn"], "TAM-VIEJA1")
+        self.assertEqual(self.fila("TAM-VIEJA1")["sede"], "Tampico")
+
+    def test_admin_edicion_no_existe_409(self) -> None:
+        self.sesion(self.admin)
+        r = self.client.post(
+            "/api/admin/equipos", headers=self.headers(),
+            json={"sn": "REY-VIEJA1", "sustituto_sn": "NO-EXISTE-2"},
+        )
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("dala de alta primero", r.text)
+        self.assertIsNone(self.fila("REY-VIEJA1")["sustituto_sn"])
+
+    def test_usuario_edicion_cruce_409(self) -> None:
+        self.sesion()
+        r = self.client.post(
+            "/api/equipos", headers=self.headers(),
+            json={"sn": "REY-VIEJA1", "sede": "Reynosa",
+                  "sustituto_sn": "TAM-VIEJA1"},
+        )
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIsNone(self.fila("REY-VIEJA1")["sustituto_sn"])
 
 
 if __name__ == "__main__":

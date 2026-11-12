@@ -29,6 +29,7 @@ class EquipoEntrada(BaseModel):
     fecha_baja: Annotated[str, Field(max_length=10, pattern=r"^(\d{4}-\d{2}-\d{2})?$")] | None = None
     origen_hoja: Texto | None = None
     confirmar_ubicacion: bool = False
+    confirmar_cruce: bool = False
 
 
 class SustitucionEntrada(BaseModel):
@@ -45,6 +46,7 @@ class SustitucionEntrada(BaseModel):
     ip_ekm: Texto | None = None
     piso: Texto | None = None
     contador_inicial: Texto | None = None
+    confirmar_cruce: bool = False
 
 
 class BorradoEquiposEntrada(BaseModel):

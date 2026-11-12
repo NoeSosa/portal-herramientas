@@ -107,9 +107,14 @@ async function api(ruta, opciones = {}) {
     }
   }
   if (!respuesta.ok) {
-    const detalle = datos && typeof datos.detail === "string"
-      ? datos.detail : `Error del servidor (${respuesta.status}).`;
-    throw new Error(detalle);
+    const det = datos?.detail;
+    const detalle = typeof det === "string"
+      ? det : (det?.mensaje || `Error del servidor (${respuesta.status}).`);
+    const error = new Error(detalle);
+    if (det && typeof det === "object" && det.sede_origen) {
+      error.cruce = {origen: det.sede_origen, destino: det.sede_destino};
+    }
+    throw error;
   }
   return datos;
 }
@@ -183,6 +188,10 @@ function conectarEventos() {
 
   $("inv-form").addEventListener("submit", guardarEquipo);
   $("sust-form").addEventListener("submit", guardarSustitucion);
+  $("sust-nueva").addEventListener("blur", buscarSustituta);
+  $("sust-nueva").addEventListener("input", programarBusquedaSustituta);
+  $("inv-sustituto").addEventListener("blur", buscarSustitutoEdicion);
+  $("inv-sustituto").addEventListener("input", programarBusquedaSustitutoEdicion);
   $("sust-cancel").addEventListener("click", () => $("sust-dialog").close());
   $("sust-modal-close").addEventListener("click", () => $("sust-dialog").close());
   $("inv-cancel").addEventListener("click", () => {
@@ -1052,6 +1061,10 @@ function limpiarFiltrosAdmin() {
 
 function editarEquipo(e) {
   A.editing = e.sn;
+  A.editingSustituto = e.sustituto_sn || "";
+  A.editingSede = e.sede || "";
+  $("inv-sustituto-estado").textContent = "";
+  $("inv-save").disabled = false;
   const idsInv = {contador_inicial: "inv-contador", sustituto_sn: "inv-sustituto", fecha_baja: "inv-fecha-baja"};
   for (const campo of ["sn", "marca", "modelo", "sede", "zona", "domicilio", "ubicacion", "piso", "estatus", "contador_inicial", "sustituto_sn", "fecha_baja"]) {
     const input = $(idsInv[campo] || `inv-${campo}`);
@@ -1089,11 +1102,23 @@ function cerrarModalInventario(forzar = false) {
 
 function limpiarFormulario() {
   A.editing = null;
+  A.editingSustituto = null;
+  A.editingSede = null;
+  $("inv-sustituto-estado").textContent = "";
+  $("inv-save").disabled = false;
   $("inv-form").reset();
   $("inv-save").textContent = "Guardar serial";
   $("inv-cancel").hidden = false;
   A.invDirty = false;
   set("inv-form-status", "");
+}
+
+async function postEquipoAdmin(datos) {
+  return api("/api/admin/equipos", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(datos),
+  });
 }
 
 async function guardarEquipo(evento) {
@@ -1123,11 +1148,19 @@ async function guardarEquipo(evento) {
       datos.confirmar_ubicacion = true;
       datos.piso = confirmacion.piso;
     }
-    const d = await api("/api/admin/equipos", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(datos),
-    });
+    let d;
+    try {
+      d = await postEquipoAdmin(datos);
+    } catch (error) {
+      if (error.cruce && !datos.confirmar_cruce && confirm(
+        `La sustituta ${datos.sustituto_sn} está en ${error.cruce.origen} y se enlazará sin moverla. ¿Confirmas?`,
+      )) {
+        datos.confirmar_cruce = true;
+        d = await postEquipoAdmin(datos);
+      } else {
+        throw error;
+      }
+    }
     set("inv-form-status", d.ok
       ? `${d.creado ? "Alta" : "Actualizado"} ${d.sn} · ${d.total} seriales`
       : d.detalle || "No se pudo exportar el Excel.");
@@ -1139,6 +1172,93 @@ async function guardarEquipo(evento) {
     await cargarSedes();
   } catch (error) {
     set("inv-form-status", error.message);
+  }
+}
+
+let sustLookupTimer = null;
+let invSustLookupTimer = null;
+
+function programarBusquedaSustituta() {
+  clearTimeout(sustLookupTimer);
+  sustLookupTimer = setTimeout(buscarSustituta, 300);
+}
+
+async function buscarSustituta() {
+  const sn = $("sust-nueva").value.trim();
+  const estadoEl = $("sust-estado");
+  const hintEl = $("sust-hint");
+  const btn = $("sust-save");
+  if (!sn) {
+    estadoEl.textContent = "";
+    hintEl.textContent = "";
+    btn.disabled = false;
+    return;
+  }
+  try {
+    const d = await api(`/api/admin/equipos?q=${encodeURIComponent(sn)}&limite=10`);
+    const fila = (d.equipos || []).find(
+      (e) => (e.sn || "").toUpperCase() === sn.toUpperCase(),
+    );
+    if (!fila) {
+      estadoEl.textContent = "No existe en inventario; dala de alta primero";
+      hintEl.textContent = "";
+      btn.disabled = true;
+      return;
+    }
+    const sedeVieja = $("sust-dialog").dataset.sedeVieja || "";
+    estadoEl.textContent = (fila.sede || "") === sedeVieja
+      ? "Encontrada en esta sede" : `Encontrada en ${fila.sede || "sin sede"}`;
+    const valores = {
+      "sust-marca": fila.marca || "",
+      "sust-modelo": fila.modelo || "",
+      "sust-tipo": fila.tipo || "",
+      "sust-perfil": fila.perfil || "",
+      "sust-ip-fisica": fila.ip_fisica || "",
+      "sust-ip-hp": fila.ip_hp || "",
+      "sust-ip-ekm": fila.ip_ekm || "",
+      "sust-piso": fila.piso || "",
+      "sust-contador": fila.contador_inicial || "",
+    };
+    for (const [id, valor] of Object.entries(valores)) $(id).value = valor;
+    hintEl.textContent = "datos de la sustituta encontrada (se conservan al sustituir)";
+    btn.disabled = false;
+  } catch (error) {
+    estadoEl.textContent = error.message;
+  }
+}
+
+function programarBusquedaSustitutoEdicion() {
+  clearTimeout(invSustLookupTimer);
+  invSustLookupTimer = setTimeout(buscarSustitutoEdicion, 300);
+}
+
+async function buscarSustitutoEdicion() {
+  const sn = $("inv-sustituto").value.trim();
+  const estadoEl = $("inv-sustituto-estado");
+  const btn = $("inv-save");
+  const original = A.editingSustituto || "";
+  if (!sn || sn.toUpperCase() === original.toUpperCase()) {
+    estadoEl.textContent = "";
+    btn.disabled = false;
+    return;
+  }
+  try {
+    const d = await api(`/api/admin/equipos?q=${encodeURIComponent(sn)}&limite=10`);
+    const fila = (d.equipos || []).find(
+      (e) => (e.sn || "").toUpperCase() === sn.toUpperCase(),
+    );
+    if (!fila) {
+      estadoEl.textContent = "No existe en inventario; dala de alta primero";
+      btn.disabled = true;
+      return;
+    }
+    const sedeFila = fila.sede || "";
+    const sedeActual = ($("inv-sede").value || "").trim() || A.editingSede || "";
+    estadoEl.textContent = sedeFila === sedeActual
+      ? "Encontrada en esta sede" : `Encontrada en ${sedeFila || "sin sede"}`;
+    btn.disabled = false;
+  } catch (error) {
+    estadoEl.textContent = error.message;
   }
 }
 
@@ -1167,8 +1287,34 @@ function abrirSustitucion(e) {
   $("sust-fecha-baja").value = hoyLocal();
   set("sust-sede", e.sede || "—");
   set("sust-form-status", "");
+  $("sust-dialog").dataset.sedeVieja = e.sede || "";
+  $("sust-estado").textContent = "";
+  $("sust-hint").textContent = "";
+  $("sust-save").disabled = false;
   if (!dialogo.open) dialogo.showModal();
   window.setTimeout(() => $("sust-nueva").focus(), 60);
+}
+
+async function postSustitucion(datos) {
+  return api("/api/equipos/sustituir", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(datos),
+  });
+}
+
+async function manejarSustitucionOk(d) {
+  if (!d.ok) {
+    set("sust-form-status", d.detalle || "No se pudo exportar el Excel.");
+    return;
+  }
+  $("sust-dialog").close();
+  set("inv-status",
+    `Sustitución ${d.vieja} → ${d.nueva} · ${d.sede}` +
+    (d.reanudada ? " (reanudada)" : "") + ` · ${d.total} seriales`);
+  await cargarInventario();
+  await cargarOverview();
+  await cargarSedes();
 }
 
 async function guardarSustitucion(evento) {
@@ -1192,23 +1338,19 @@ async function guardarSustitucion(evento) {
     return;
   }
   try {
-    const d = await api("/api/equipos/sustituir", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(datos),
-    });
-    if (!d.ok) {
-      set("sust-form-status", d.detalle || "No se pudo exportar el Excel.");
+    await manejarSustitucionOk(await postSustitucion(datos));
+  } catch (error) {
+    if (error.cruce && !datos.confirmar_cruce && confirm(
+      `La sustituta ${datos.nueva} está en ${error.cruce.origen} y se moverá a ${error.cruce.destino}. ¿Confirmas?`,
+    )) {
+      datos.confirmar_cruce = true;
+      try {
+        await manejarSustitucionOk(await postSustitucion(datos));
+      } catch (error2) {
+        set("sust-form-status", error2.message);
+      }
       return;
     }
-    $("sust-dialog").close();
-    set("inv-status",
-      `Sustitución ${d.vieja} → ${d.nueva} · ${d.sede}` +
-      (d.reanudada ? " (reanudada)" : "") + ` · ${d.total} seriales`);
-    await cargarInventario();
-    await cargarOverview();
-    await cargarSedes();
-  } catch (error) {
     set("sust-form-status", error.message);
   }
 }

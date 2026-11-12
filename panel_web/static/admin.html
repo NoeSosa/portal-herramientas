@@ -231,6 +231,7 @@
           <label>Estatus<input id="inv-estatus" name="estatus"></label>
           <label>Contador inicial<input id="inv-contador" name="contador_inicial"></label>
           <label>Sustituto<input id="inv-sustituto" name="sustituto_sn"></label>
+          <span class="location-hint" id="inv-sustituto-estado"></span>
           <label>Fecha de baja<input id="inv-fecha-baja" name="fecha_baja" type="date"></label>
           <div class="inventory-form-actions">
             <button class="btn btn-primary" type="submit" id="inv-save">Guardar serial</button>
@@ -264,7 +265,9 @@
           <label>Piso<input id="sust-piso" name="piso"></label>
           <label>Contador inicial<input id="sust-contador" name="contador_inicial"></label>
           <label>Fecha de baja<input id="sust-fecha-baja" name="fecha_baja" type="date"></label>
-          <p class="inventory-hint">Sede: <span id="sust-sede">—</span>. La serie nueva hereda sede, zona, domicilio y ubicación de la vieja.</p>
+          <p class="inventory-hint">Sede: <span id="sust-sede">—</span>. La sustituta conserva sus datos y pasa a la sede de la vieja.</p>
+          <p class="inventory-hint" id="sust-estado"></p>
+          <p class="inventory-hint" id="sust-hint"></p>
           <div class="inventory-form-actions">
             <button class="btn btn-primary" type="submit" id="sust-save">Sustituir</button>
             <button class="btn-text" type="button" id="sust-cancel">Cancelar</button>

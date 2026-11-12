@@ -315,11 +315,12 @@
         <label>Zona<input id="eq-zona" maxlength="80"></label>
         <label>Contador inicial<input id="eq-contador" maxlength="80"></label>
         <label>Sustituto<input id="eq-sustituto" maxlength="256"></label>
+        <span class="form-status" id="eq-sustituto-estado"></span>
         <label>Fecha de baja<input id="eq-fecha-baja" type="date"></label>
       </div>
       <p class="form-status" id="eq-status" role="status"></p>
       <div class="profile-actions">
-        <button class="btn btn-primary" type="submit">Guardar equipo</button>
+        <button class="btn btn-primary" type="submit" id="eq-save">Guardar equipo</button>
         <button class="btn-text" type="button" id="eq-cancel">Cancelar</button>
       </div>
     </form>
@@ -342,10 +343,12 @@
         <label>Contador inicial<input id="sust-contador" maxlength="80"></label>
         <label>Fecha de baja<input id="sust-fecha-baja" type="date"></label>
       </div>
-      <p class="form-status">Sede: <span id="sust-sede">—</span>. La serie nueva hereda sede, zona, domicilio y ubicación de la vieja.</p>
+      <p class="form-status">Sede: <span id="sust-sede">—</span>. La sustituta conserva sus datos y pasa a la sede de la vieja.</p>
+      <p class="form-status" id="sust-estado" role="status"></p>
+      <p class="form-status" id="sust-hint"></p>
       <p class="form-status" id="sust-status" role="status"></p>
       <div class="profile-actions">
-        <button class="btn btn-primary" type="submit">Sustituir</button>
+        <button class="btn btn-primary" type="submit" id="sust-save">Sustituir</button>
         <button class="btn-text" type="button" id="sust-cancel">Cancelar</button>
       </div>
     </form>
